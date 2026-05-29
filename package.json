@@ -1,0 +1,35 @@
+{
+  "name": "playwright-cucumber-ts",
+  "version": "1.0.0",
+  "description": "Automation Framework using Playwright with Cucumber and TypeScript",
+  "main": "index.js",
+  "scripts": {
+    "test": "cucumber-js",
+    "test:tags": "cucumber-js --tags @regression",
+    "test:parallel": "cucumber-js --parallel 2",
+    "test:dry": "cucumber-js --dry-run",
+    "report": "ts-node src/support/reporters/custom-reporter.ts",
+    "test:report": "cucumber-js && ts-node src/support/reporters/custom-reporter.ts",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "keywords": [
+    "playwright",
+    "cucumber",
+    "typescript",
+    "bdd",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cucumber/cucumber": "^10.3.1",
+    "@playwright/test": "^1.42.1",
+    "@types/node": "^20.11.19",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "multiple-cucumber-html-reporter": "^3.6.2",
+    "dotenv": "^16.4.5",
+    "winston": "^3.11.0"
+  }
+}
