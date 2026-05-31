@@ -5,24 +5,28 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-// --- Inline config (no external file dependencies) ---
-// BASE_URL: reads from env var first, falls back to ./config if it exists
-let configBaseUrl = "";
-try { configBaseUrl = require("./config").config?.BASE_URL || ""; } catch (_) { /* no config file */ }
-
-const ENV = {
-  BASE_URL: process.env.BASE_URL || configBaseUrl,
-  BROWSER: (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium",
-  HEADLESS: process.env.HEADLESS === "true",
-  SLOW_MO: parseInt(process.env.SLOW_MO || "0"),
-  TIMEOUT: parseInt(process.env.TIMEOUT || "30000"),
-};
-
-const browserOptions: LaunchOptions = {
-  headless: ENV.HEADLESS,
-  slowMo: ENV.SLOW_MO,
+// --- Config: reads from ./config.ts if available, otherwise falls back to env vars ---
+let BASE_URL = process.env.BASE_URL || "";
+let browserName = (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium";
+let browserOptions: LaunchOptions = {
+  headless: process.env.HEADLESS === "true",
+  slowMo: parseInt(process.env.SLOW_MO || "0"),
   args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
 };
+
+try {
+  const { config, currentEnv, getBaseUrl } = require("./config");
+  if (getBaseUrl) {
+    BASE_URL = BASE_URL || getBaseUrl();
+  } else if (config?.ENVIORNMENT) {
+    const env = currentEnv || process.env.ENV || "QA";
+    BASE_URL = BASE_URL || config.ENVIORNMENT[env]?.BASE_URL || "";
+  }
+  if (config?.browser) browserName = config.browser;
+  if (config?.browserOptions) browserOptions = { ...browserOptions, ...config.browserOptions };
+} catch (_) { /* no config file - using env vars */ }
+
+const TIMEOUT = parseInt(process.env.TIMEOUT || "30000");
 
 setDefaultTimeout(60000);
 
@@ -30,7 +34,7 @@ let browser: Browser;
 
 BeforeAll(async function () {
   console.log("Launching browser...");
-  switch (ENV.BROWSER) {
+  switch (browserName) {
     case "firefox":
       browser = await firefox.launch(browserOptions);
       break;
@@ -52,9 +56,9 @@ Before(async function (this: ICustomWorld, scenario) {
     recordVideo: { dir: "videos/" },
   });
   this.page = await this.context.newPage();
-  this.page.setDefaultTimeout(ENV.TIMEOUT);
-  if (ENV.BASE_URL) {
-    await this.page.goto(ENV.BASE_URL);
+  this.page.setDefaultTimeout(TIMEOUT);
+  if (BASE_URL) {
+    await this.page.goto(BASE_URL);
   }
 });
 
