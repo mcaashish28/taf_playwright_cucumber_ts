@@ -3,7 +3,6 @@ import { chromium, firefox, webkit, Browser } from "@playwright/test";
 import { ICustomWorld } from "./custom-world";
 import { ENV } from "../config/environment";
 import { browserOptions } from "../config/browser-options";
-import { Logger } from "../utils/logger";
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -13,7 +12,7 @@ setDefaultTimeout(60000);
 let browser: Browser;
 
 BeforeAll(async function () {
-  Logger.info("Launching browser...");
+  console.log("Launching browser...");
   switch (ENV.BROWSER) {
     case "firefox":
       browser = await firefox.launch(browserOptions);
@@ -29,7 +28,7 @@ BeforeAll(async function () {
 Before(async function (this: ICustomWorld, scenario) {
   this.startTime = new Date();
   this.testName = scenario.pickle.name;
-  Logger.info(`Starting scenario: ${this.testName}`);
+  console.log(`Starting scenario: ${this.testName}`);
 
   this.context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
@@ -40,7 +39,7 @@ Before(async function (this: ICustomWorld, scenario) {
 });
 
 After(async function (this: ICustomWorld, scenario) {
-  Logger.info(`Finished scenario: ${this.testName} - Status: ${scenario.result?.status}`);
+  console.log(`Finished scenario: ${this.testName} - Status: ${scenario.result?.status}`);
 
   if (scenario.result?.status === Status.FAILED) {
     if (this.page) {
@@ -61,7 +60,7 @@ After(async function (this: ICustomWorld, scenario) {
 });
 
 AfterAll(async function () {
-  Logger.info("Closing browser...");
+  console.log("Closing browser...");
   if (browser) {
     await browser.close();
   }
