@@ -88,12 +88,25 @@ AfterAll(async function () {
     await browser.close();
   }
 
-  // Give the JSON formatter a moment to flush, then spawn detached HTML generator
+  // Give the JSON formatter a moment to flush, then generate HTML report
   try {
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     const reportsDir = path.resolve(process.cwd(), "reports");
+    if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
+
+    // Clean up stale lock file (older than 30 seconds)
     const lockFile = path.join(reportsDir, ".report_lock");
+    try {
+      if (fs.existsSync(lockFile)) {
+        const lockAge = Date.now() - fs.statSync(lockFile).mtimeMs;
+        if (lockAge > 30 * 1000) {
+          fs.unlinkSync(lockFile);
+          console.log("Removed stale report lock file.");
+        }
+      }
+    } catch (_) { /* ignore */ }
+
     try {
       const fd = fs.openSync(lockFile, "wx");
       fs.closeSync(fd);
@@ -101,10 +114,15 @@ AfterAll(async function () {
       try {
         const child = spawn("npx", ["ts-node", "src/support/reporters/custom-reporter.ts"], {
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", "pipe", "pipe"],
           cwd: process.cwd(),
           env: { ...process.env, REPORT_LOCK_FILE: lockFile, REPORT_GENERATOR_DELAY_MS: "5000" },
         });
+
+        // Log output so errors are visible
+        child.stdout?.on("data", (data: Buffer) => process.stdout.write(data));
+        child.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
+        child.on("error", (err) => console.error("Report generator error:", err.message));
         child.unref();
         console.log("Scheduled detached report generator.");
       } catch (spawnErr) {
