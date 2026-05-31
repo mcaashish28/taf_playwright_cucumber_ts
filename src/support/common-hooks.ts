@@ -1,11 +1,23 @@
 import { Before, After, BeforeAll, AfterAll, Status, setDefaultTimeout } from "@cucumber/cucumber";
-import { chromium, firefox, webkit, Browser } from "@playwright/test";
+import { chromium, firefox, webkit, Browser, LaunchOptions } from "@playwright/test";
 import { ICustomWorld } from "./custom-world";
-import { ENV } from "../config/environment";
-import { browserOptions } from "../config/browser-options";
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+
+// --- Inline config (no external file dependencies) ---
+const ENV = {
+  BROWSER: (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium",
+  HEADLESS: process.env.HEADLESS === "true",
+  SLOW_MO: parseInt(process.env.SLOW_MO || "0"),
+  TIMEOUT: parseInt(process.env.TIMEOUT || "30000"),
+};
+
+const browserOptions: LaunchOptions = {
+  headless: ENV.HEADLESS,
+  slowMo: ENV.SLOW_MO,
+  args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+};
 
 setDefaultTimeout(60000);
 
