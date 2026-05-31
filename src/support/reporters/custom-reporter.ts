@@ -478,35 +478,18 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
   const reportTime = now.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' });
   const failedResults = results.filter((r) => r.status === 'failed');
 
-  // Prepare attachments: write image embeddings to assets folder next to report
-  const reportDir = path.dirname(reportFilePath);
-  const reportBase = path.basename(reportFilePath, '.html');
-  const assetsDirName = `${reportBase}_assets`;
-  const assetsDir = path.join(reportDir, assetsDirName);
-  if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
-
-  const attachmentMap = new Map<number, { fileName: string; mime: string }[]>();
+  // Prepare attachments: embed images as base64 data URIs (single self-contained HTML file)
+  const attachmentMap = new Map<number, { dataUri: string; mime: string }[]>();
   results.forEach((r, idx) => {
     if (!r.attachments || r.attachments.length === 0) return;
     for (let j = 0; j < r.attachments.length; j++) {
       const a = r.attachments[j];
       if (!a || !a.mime_type || !a.data) continue;
       if (!a.mime_type.startsWith('image/')) continue;
-      const ext = a.mime_type.includes('png')
-        ? '.png'
-        : a.mime_type.includes('jpeg') || a.mime_type.includes('jpg')
-        ? '.jpg'
-        : '.bin';
-      const fileName = `scenario-${idx}-att-${j}${ext}`;
-      const outPath = path.join(assetsDir, fileName);
-      try {
-        fs.writeFileSync(outPath, new Uint8Array(Buffer.from(a.data, 'base64')));
-        const arr = attachmentMap.get(idx) || [];
-        arr.push({ fileName, mime: a.mime_type });
-        attachmentMap.set(idx, arr);
-      } catch (e) {
-        // ignore write failures
-      }
+      const dataUri = `data:${a.mime_type};base64,${a.data}`;
+      const arr = attachmentMap.get(idx) || [];
+      arr.push({ dataUri, mime: a.mime_type });
+      attachmentMap.set(idx, arr);
     }
   });
 
@@ -920,7 +903,7 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
               .map(
                 (a) => `
             <div style="margin-top:12px;display:inline-block;">
-              <img src="./${assetsDirName}/${a.fileName}" class="clickable-image" onclick="openImage(this.src)" style="max-width:320px;border:1px solid #eee;border-radius:6px;">
+              <img src="${a.dataUri}" class="clickable-image" onclick="openImage(this.src)" style="max-width:320px;border:1px solid #eee;border-radius:6px;">
             </div>`,
               )
               .join('')}
@@ -1005,7 +988,7 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
                 .map(
                   (img) => `
             <div style="margin-top:12px;">
-              <img src="./${assetsDirName}/${img.fileName}" class="clickable-image" onclick="openImage(this.src)" style="max-width:480px;border:1px solid #eee;border-radius:6px;">
+              <img src="${img.dataUri}" class="clickable-image" onclick="openImage(this.src)" style="max-width:480px;border:1px solid #eee;border-radius:6px;">
             </div>`,
                 )
                 .join('')}
@@ -1406,6 +1389,19 @@ export async function generateReport(): Promise<void> {
 
     const htmlPath = path.join(reportsDir, `${reportName}.html`);
     generateHtmlReport(results, htmlPath, env);
+
+    // Clean up JSON files after HTML is generated (report is self-contained)
+    for (const jsonFile of runJsonFiles) {
+      try {
+        fs.unlinkSync(path.join(reportsDir, jsonFile));
+      } catch (_) { /* ignore */ }
+    }
+    // Also remove any recovered JSON files and lock file
+    const recoveredFiles = fs.readdirSync(reportsDir).filter((f) => f.endsWith('.recovered.json'));
+    for (const rf of recoveredFiles) {
+      try { fs.unlinkSync(path.join(reportsDir, rf)); } catch (_) { /* ignore */ }
+    }
+    try { fs.unlinkSync(path.join(reportsDir, '.report_lock')); } catch (_) { /* ignore */ }
   } catch (error) {
     console.error('❌ Error generating report:', error);
   }

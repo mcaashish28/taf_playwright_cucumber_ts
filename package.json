@@ -4,9 +4,9 @@
   "description": "Automation Framework using Playwright with Cucumber and TypeScript",
   "main": "index.js",
   "scripts": {
-    "test": "npx cucumber-js || cd . && npx ts-node src/support/reporters/custom-reporter.ts && node -e \"try{require('fs').unlinkSync('reports/.report_lock')}catch(e){}\"",
-    "test:tags": "npx cucumber-js --tags @regression || cd . && npx ts-node src/support/reporters/custom-reporter.ts && node -e \"try{require('fs').unlinkSync('reports/.report_lock')}catch(e){}\"",
-    "test:parallel": "npx cucumber-js --parallel 2 || cd . && npx ts-node src/support/reporters/custom-reporter.ts && node -e \"try{require('fs').unlinkSync('reports/.report_lock')}catch(e){}\"",
+    "test": "npx cucumber-js || cd . && npx ts-node src/support/reporters/custom-reporter.ts",
+    "test:tags": "npx cucumber-js --tags @regression || cd . && npx ts-node src/support/reporters/custom-reporter.ts",
+    "test:parallel": "npx cucumber-js --parallel 2 || cd . && npx ts-node src/support/reporters/custom-reporter.ts",
     "test:dry": "npx cucumber-js --dry-run",
     "report": "npx ts-node src/support/reporters/custom-reporter.ts",
     "lint": "eslint src/**/*.ts",
