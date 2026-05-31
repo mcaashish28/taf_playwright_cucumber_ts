@@ -53,7 +53,6 @@ Before(async function (this: ICustomWorld, scenario) {
 
   this.context = await browser.newContext({
     viewport: null,
-    recordVideo: { dir: "videos/" },
   });
   this.page = await this.context.newPage();
   this.page.setDefaultTimeout(TIMEOUT);
