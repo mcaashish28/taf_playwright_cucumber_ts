@@ -4,12 +4,11 @@
   "description": "Automation Framework using Playwright with Cucumber and TypeScript",
   "main": "index.js",
   "scripts": {
-    "test": "npx cucumber-js",
-    "test:tags": "npx cucumber-js --tags @regression",
-    "test:parallel": "npx cucumber-js --parallel 2",
+    "test": "npx cucumber-js; npx ts-node src/support/reporters/custom-reporter.ts; rm -f reports/.report_lock",
+    "test:tags": "npx cucumber-js --tags @regression; npx ts-node src/support/reporters/custom-reporter.ts; rm -f reports/.report_lock",
+    "test:parallel": "npx cucumber-js --parallel 2; npx ts-node src/support/reporters/custom-reporter.ts; rm -f reports/.report_lock",
     "test:dry": "npx cucumber-js --dry-run",
-    "report": "ts-node src/support/reporters/custom-reporter.ts",
-    "test:report": "npx cucumber-js --tags @regression && npx ts-node src/support/reporters/custom-reporter.ts",
+    "report": "npx ts-node src/support/reporters/custom-reporter.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
