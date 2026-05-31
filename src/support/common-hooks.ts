@@ -7,6 +7,7 @@ import * as path from "path";
 
 // --- Inline config (no external file dependencies) ---
 const ENV = {
+  BASE_URL: process.env.BASE_URL || "",
   BROWSER: (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium",
   HEADLESS: process.env.HEADLESS === "true",
   SLOW_MO: parseInt(process.env.SLOW_MO || "0"),
@@ -48,6 +49,9 @@ Before(async function (this: ICustomWorld, scenario) {
   });
   this.page = await this.context.newPage();
   this.page.setDefaultTimeout(ENV.TIMEOUT);
+  if (ENV.BASE_URL) {
+    await this.page.goto(ENV.BASE_URL);
+  }
 });
 
 After(async function (this: ICustomWorld, scenario) {
