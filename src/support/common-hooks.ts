@@ -11,7 +11,7 @@ let browserName = (process.env.BROWSER as "chromium" | "firefox" | "webkit") || 
 let browserOptions: LaunchOptions = {
   headless: process.env.HEADLESS === "true",
   slowMo: parseInt(process.env.SLOW_MO || "0"),
-  args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized"],
 };
 
 try {
@@ -52,7 +52,7 @@ Before(async function (this: ICustomWorld, scenario) {
   console.log(`Starting scenario: ${this.testName}`);
 
   this.context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
+    viewport: null,
     recordVideo: { dir: "videos/" },
   });
   this.page = await this.context.newPage();
