@@ -6,8 +6,12 @@ import * as fs from "fs";
 import * as path from "path";
 
 // --- Inline config (no external file dependencies) ---
+// BASE_URL: reads from env var first, falls back to ./config if it exists
+let configBaseUrl = "";
+try { configBaseUrl = require("./config").config?.BASE_URL || ""; } catch (_) { /* no config file */ }
+
 const ENV = {
-  BASE_URL: process.env.BASE_URL || "",
+  BASE_URL: process.env.BASE_URL || configBaseUrl,
   BROWSER: (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium",
   HEADLESS: process.env.HEADLESS === "true",
   SLOW_MO: parseInt(process.env.SLOW_MO || "0"),
