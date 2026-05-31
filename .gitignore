@@ -7,3 +7,4 @@ videos/
 traces/
 .env
 *.log
+.DS_Store

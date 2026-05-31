@@ -14,8 +14,12 @@
 //   3. Or call generateReport() from AfterAll hook
 // ============================================================================
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+// Environment toggles
+const REPORTER_ENABLE_REPAIR = process.env.REPORTER_ENABLE_REPAIR !== 'false';
+const REPORTER_AGGRESSIVE_REPAIR = process.env.REPORTER_AGGRESSIVE_REPAIR === 'true';
 
 // --- Interfaces ---
 
@@ -36,6 +40,7 @@ interface ScenarioResult {
   duration: number;
   steps: StepResult[];
   tags: string[];
+  attachments?: { mime_type: string; data: string; name?: string }[];
 }
 
 interface ModuleSummary {
@@ -45,6 +50,8 @@ interface ModuleSummary {
   passed: number;
   failed: number;
   skipped: number;
+  pending: number;
+  undefined: number;
   duration: number;
   healthPercent: number;
 }
@@ -52,32 +59,38 @@ interface ModuleSummary {
 // --- Utility Functions ---
 
 function getReportFileName(): string {
-  const env = process.env.ENV_NAME || "qa";
+  const env = process.env.ENV_NAME || 'qa';
   const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = now.getFullYear();
   let hours = now.getHours();
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
-  const ampm = hours >= 12 ? "PM" : "AM";
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
   hours = hours % 12 || 12;
-  const hh = String(hours).padStart(2, "0");
+  const hh = String(hours).padStart(2, '0');
   return `report_${env}_${dd}_${mm}_${yyyy}_${hh}_${minutes}_${seconds}_${ampm}`;
 }
 
 function extractModuleName(uri: string): string {
   // Auto-detect module from path: features/module_1/file.feature -> Module 1
-  const parts = uri.replace(/\\/g, "/").split("/");
-  const featuresIdx = parts.findIndex((p) => p === "features");
-  if (featuresIdx >= 0 && featuresIdx + 1 < parts.length) {
-    const modulePart = parts[featuresIdx + 1];
+  const parts = uri.replace(/\\/g, '/').split('/');
+  const featuresIdx = parts.findIndex((p) => p === 'features');
+  if (featuresIdx >= 0) {
+    // Prefer the subfolder after a release folder when present.
+    // Example: features/aarelease8/document/my.feature -> pick 'document'
+    const firstAfterFeatures = parts[featuresIdx + 1];
+    const secondAfterFeatures = parts[featuresIdx + 2];
+    let modulePart = firstAfterFeatures || 'Default';
+    // If there's a second segment and it's not a feature file name, prefer it.
+    if (secondAfterFeatures && !secondAfterFeatures.toLowerCase().endsWith('.feature')) {
+      modulePart = secondAfterFeatures;
+    }
     // Convert module_1 -> Module 1, login -> Login, etc.
-    return modulePart
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return modulePart.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
-  return "Default";
+  return 'Default';
 }
 
 function formatDuration(nanos: number): string {
@@ -91,113 +104,204 @@ function formatDuration(nanos: number): string {
 }
 
 function getHealthColor(percent: number): string {
-  if (percent >= 90) return "#27ae60";
-  if (percent >= 70) return "#f39c12";
-  if (percent >= 50) return "#e67e22";
-  return "#e74c3c";
+  if (percent >= 90) return '#27ae60';
+  if (percent >= 70) return '#f39c12';
+  if (percent >= 50) return '#e67e22';
+  return '#e74c3c';
 }
 
 function getHealthLabel(percent: number): string {
-  if (percent >= 90) return "Healthy";
-  if (percent >= 70) return "Needs Attention";
-  if (percent >= 50) return "At Risk";
-  return "Critical";
+  if (percent >= 90) return 'Healthy';
+  if (percent >= 70) return 'Needs Attention';
+  if (percent >= 50) return 'At Risk';
+  return 'Critical';
 }
 
 function getStatusIcon(status: string): string {
   switch (status) {
-    case "passed": return "&#10004;";
-    case "failed": return "&#10008;";
-    case "skipped": return "&#8722;";
-    default: return "&#63;";
+    case 'passed':
+      return '&#10004;';
+    case 'failed':
+      return '&#10008;';
+    case 'skipped':
+      return '&#8722;';
+    default:
+      return '&#63;';
   }
 }
 
 function extractRootCause(errorMessage: string): string {
-  if (!errorMessage) return "Unknown failure - no error details captured.";
+  if (!errorMessage) return 'Unknown failure - no error details captured.';
 
   // Assertion failures (expect)
   const expectMatch = errorMessage.match(/expect\((.+?)\)\.([\w]+)\((.+?)\)/);
   if (expectMatch) {
-    const [, received, matcher, expected] = expectMatch;
-    if (matcher === "toContain") return `Expected value to contain ${expected}, but it was not found in the actual result.`;
-    if (matcher === "toBeTruthy") return `Expected a truthy value but received a falsy one. The element or condition was not met.`;
-    if (matcher === "toBe") return `Expected ${expected} but received a different value.`;
-    if (matcher === "toEqual") return `Expected value to equal ${expected} but the actual value did not match.`;
+    const [, , matcher, expected] = expectMatch;
+    if (matcher === 'toContain')
+      return `Expected value to contain ${expected}, but it was not found in the actual result.`;
+    if (matcher === 'toBeTruthy')
+      return `Expected a truthy value but received a falsy one. The element or condition was not met.`;
+    if (matcher === 'toBe') return `Expected ${expected} but received a different value.`;
+    if (matcher === 'toEqual')
+      return `Expected value to equal ${expected} but the actual value did not match.`;
     return `Assertion failed: expected ${matcher} condition was not satisfied.`;
   }
 
   // Playwright timeout
-  if (errorMessage.includes("Timeout") || errorMessage.includes("exceeded") || errorMessage.includes("timed out")) {
-    return "Element not found or action timed out. The page may not have loaded correctly, or the element locator is incorrect.";
+  if (
+    errorMessage.includes('Timeout') ||
+    errorMessage.includes('exceeded') ||
+    errorMessage.includes('timed out')
+  ) {
+    return 'Element not found or action timed out. The page may not have loaded correctly, or the element locator is incorrect.';
   }
 
   // Element not visible/found
-  if (errorMessage.includes("not visible") || errorMessage.includes("not attached") || errorMessage.includes("not found")) {
-    return "Target element was not visible or not present in the DOM. The page structure may have changed or the element has not rendered.";
+  if (
+    errorMessage.includes('not visible') ||
+    errorMessage.includes('not attached') ||
+    errorMessage.includes('not found')
+  ) {
+    return 'Target element was not visible or not present in the DOM. The page structure may have changed or the element has not rendered.';
   }
 
   // Navigation errors
-  if (errorMessage.includes("ERR_NAME_NOT_RESOLVED") || errorMessage.includes("ERR_CONNECTION") || errorMessage.includes("net::")) {
-    return "Network/navigation error. The target URL may be unreachable or the server is down.";
+  if (
+    errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+    errorMessage.includes('ERR_CONNECTION') ||
+    errorMessage.includes('net::')
+  ) {
+    return 'Network/navigation error. The target URL may be unreachable or the server is down.';
   }
 
   // Strict mode violation
-  if (errorMessage.includes("strict mode violation") || errorMessage.includes("resolved to")) {
-    return "Multiple elements matched the locator. The selector is not specific enough and needs to be refined.";
+  if (errorMessage.includes('strict mode violation') || errorMessage.includes('resolved to')) {
+    return 'Multiple elements matched the locator. The selector is not specific enough and needs to be refined.';
   }
 
   // Generic - extract first meaningful line
-  const lines = errorMessage.split("\n").filter((l) => l.trim() && !l.trim().startsWith("at "));
-  const firstMeaningful = lines.find((l) => l.includes("Error") || l.includes("expect") || l.includes("assert")) || lines[0];
-  return firstMeaningful?.trim() || "An unexpected error occurred during test execution.";
+  const lines = errorMessage.split('\n').filter((l) => l.trim() && !l.trim().startsWith('at '));
+  const firstMeaningful =
+    lines.find((l) => l.includes('Error') || l.includes('expect') || l.includes('assert')) ||
+    lines[0];
+  return firstMeaningful?.trim() || 'An unexpected error occurred during test execution.';
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case "passed": return "#27ae60";
-    case "failed": return "#e74c3c";
-    case "skipped": return "#3498db";
-    case "pending": return "#f39c12";
-    case "undefined": return "#95a5a6";
-    default: return "#bdc3c7";
+function escapeHtml(input: any): string {
+  if (input === null || input === undefined) return '';
+  const s = String(input);
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// --- Diagnostics helpers ---
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+async function saveParseDiagnostics(jsonPath: string, attempt: number, err: any): Promise<void> {
+  try {
+    const outDir = path.join(process.cwd(), 'reports', 'parse-errors');
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+    let size = 0;
+    let mtime = 0;
+    try {
+      const st = fs.statSync(jsonPath);
+      size = st.size;
+      mtime = st.mtimeMs;
+    } catch (e) {
+      // file may not exist yet
+    }
+
+    let tail = '';
+    try {
+      if (fs.existsSync(jsonPath)) {
+        const content = fs.readFileSync(jsonPath, 'utf8');
+        tail = content.slice(-8192);
+      }
+    } catch (e) {
+      tail = `ERROR_READING_TAIL: ${String(e)}`;
+    }
+
+    const diag = {
+      file: path.basename(jsonPath),
+      path: jsonPath,
+      size,
+      mtime,
+      attempt,
+      error: String(err),
+      capturedAt: new Date().toISOString(),
+    };
+
+    const baseName = path.basename(jsonPath);
+    const diagFile = path.join(outDir, `${baseName}.attempt${attempt}.diag.json`);
+    const tailFile = path.join(outDir, `${baseName}.attempt${attempt}.tail.txt`);
+    fs.writeFileSync(diagFile, JSON.stringify(diag, null, 2), 'utf8');
+    fs.writeFileSync(tailFile, tail, 'utf8');
+    console.log(`ℹ️ Saved parse diagnostics: ${path.relative(process.cwd(), diagFile)}`);
+  } catch (e) {
+    console.log('⚠️ Failed to write parse diagnostics:', String(e));
   }
 }
+
+// getStatusColor removed (unused) to avoid TypeScript unused-variable errors
 
 // --- JSON Parser ---
 
 function parseJsonReport(jsonFilePath: string): ScenarioResult[] {
   const results: ScenarioResult[] = [];
   if (!fs.existsSync(jsonFilePath)) return results;
-
-  const raw = JSON.parse(fs.readFileSync(jsonFilePath, "utf-8"));
+  const fileContent = fs.readFileSync(jsonFilePath, 'utf-8');
+  const raw = JSON.parse(fileContent);
   for (const feature of raw) {
-    const featureName = feature.name || "Unknown Feature";
-    const featureUri = feature.uri || "";
+    const featureName = feature.name || 'Unknown Feature';
+    const featureUri = feature.uri || '';
     const moduleName = extractModuleName(featureUri);
     const featureTags = (feature.tags || []).map((t: any) => t.name);
 
     for (const element of feature.elements || []) {
-      if (element.type !== "scenario") continue;
+      if (element.type !== 'scenario') continue;
       const steps: StepResult[] = [];
-      let scenarioStatus = "passed";
+      const attachments: { mime_type: string; data: string; name?: string }[] = [];
+      let scenarioStatus = 'passed';
       let totalDuration = 0;
 
       for (const step of element.steps || []) {
-        const stepStatus = step.result?.status || "undefined";
+        // Extract embeddings (screenshots, traces) at step-level and attach to scenario
+        if (step.embeddings && Array.isArray(step.embeddings)) {
+          for (const emb of step.embeddings) {
+            if (emb && emb.data) {
+              attachments.push({
+                mime_type: emb.mime_type || 'application/octet-stream',
+                data: emb.data,
+                name: emb.name,
+              });
+            }
+          }
+        }
+        const stepStatus = step.result?.status || 'undefined';
         const stepDuration = step.result?.duration || 0;
         totalDuration += stepDuration;
         steps.push({
-          name: step.name || "",
-          keyword: (step.keyword || "").trim(),
+          name: step.name || '',
+          keyword: (step.keyword || '').trim(),
           status: stepStatus,
           duration: stepDuration,
           errorMessage: step.result?.error_message,
         });
-        if (stepStatus === "failed") scenarioStatus = "failed";
-        else if (stepStatus === "skipped" && scenarioStatus !== "failed") scenarioStatus = "skipped";
-        else if (stepStatus === "pending" && scenarioStatus === "passed") scenarioStatus = "pending";
-        else if (stepStatus === "undefined" && scenarioStatus === "passed") scenarioStatus = "undefined";
+        if (stepStatus === 'failed') scenarioStatus = 'failed';
+        else if (stepStatus === 'skipped' && scenarioStatus !== 'failed')
+          scenarioStatus = 'skipped';
+        else if (stepStatus === 'pending' && scenarioStatus === 'passed')
+          scenarioStatus = 'pending';
+        else if (stepStatus === 'undefined' && scenarioStatus === 'passed')
+          scenarioStatus = 'undefined';
       }
 
       const scenarioTags = (element.tags || []).map((t: any) => t.name);
@@ -205,15 +309,115 @@ function parseJsonReport(jsonFilePath: string): ScenarioResult[] {
         feature: featureName,
         featureUri,
         module: moduleName,
-        scenario: element.name || "Unknown Scenario",
+        scenario: element.name || 'Unknown Scenario',
         status: scenarioStatus,
         duration: totalDuration,
         steps,
-        tags: [...new Set([...featureTags, ...scenarioTags])],
+        tags: Array.from(new Set(featureTags.concat(scenarioTags))),
+        attachments,
       });
     }
   }
   return results;
+}
+
+function parseJsonContent(raw: any): ScenarioResult[] {
+  const results: ScenarioResult[] = [];
+  for (const feature of raw) {
+    const featureName = feature.name || 'Unknown Feature';
+    const featureUri = feature.uri || '';
+    const moduleName = extractModuleName(featureUri);
+    const featureTags = (feature.tags || []).map((t: any) => t.name);
+
+    for (const element of feature.elements || []) {
+      if (element.type !== 'scenario') continue;
+      const steps: StepResult[] = [];
+      let scenarioStatus = 'passed';
+      let totalDuration = 0;
+
+      for (const step of element.steps || []) {
+        const stepStatus = step.result?.status || 'undefined';
+        const stepDuration = step.result?.duration || 0;
+        totalDuration += stepDuration;
+        steps.push({
+          name: step.name || '',
+          keyword: (step.keyword || '').trim(),
+          status: stepStatus,
+          duration: stepDuration,
+          errorMessage: step.result?.error_message,
+        });
+        if (stepStatus === 'failed') scenarioStatus = 'failed';
+        else if (stepStatus === 'skipped' && scenarioStatus !== 'failed')
+          scenarioStatus = 'skipped';
+        else if (stepStatus === 'pending' && scenarioStatus === 'passed')
+          scenarioStatus = 'pending';
+        else if (stepStatus === 'undefined' && scenarioStatus === 'passed')
+          scenarioStatus = 'undefined';
+      }
+
+      const scenarioTags = (element.tags || []).map((t: any) => t.name);
+      results.push({
+        feature: featureName,
+        featureUri,
+        module: moduleName,
+        scenario: element.name || 'Unknown Scenario',
+        status: scenarioStatus,
+        duration: totalDuration,
+        steps,
+        tags: Array.from(new Set(featureTags.concat(scenarioTags))),
+      });
+    }
+  }
+  return results;
+}
+
+async function attemptRepairJson(jsonPath: string): Promise<any[] | null> {
+  try {
+    if (!REPORTER_ENABLE_REPAIR) {
+      console.log('ℹ️ Auto-repair disabled via REPORTER_ENABLE_REPAIR=false');
+      return null;
+    }
+    if (!fs.existsSync(jsonPath)) return null;
+    const content = fs.readFileSync(jsonPath, 'utf8');
+    const lastIdx = content.lastIndexOf(']');
+    if (lastIdx === -1) return null;
+    const trimmed = content.slice(0, lastIdx + 1);
+    try {
+      const parsed = JSON.parse(trimmed);
+      const outDir = path.join(process.cwd(), 'reports');
+      const baseName = path.basename(jsonPath);
+      const recoveredPath = path.join(outDir, `${baseName}.recovered.json`);
+      fs.writeFileSync(recoveredPath, trimmed, 'utf8');
+      console.log(`✅ Recovered JSON written: ${path.relative(process.cwd(), recoveredPath)}`);
+      return parsed;
+    } catch (e) {
+      // If aggressive repair is enabled, try to remove trailing commas
+      if (REPORTER_AGGRESSIVE_REPAIR) {
+        try {
+          let cleaned = trimmed.replace(/,\s*([\]}])/g, '$1');
+          // Also remove any repeated commas
+          cleaned = cleaned.replace(/,\s*,+/g, ',');
+          const parsed2 = JSON.parse(cleaned);
+          const outDir = path.join(process.cwd(), 'reports');
+          const baseName = path.basename(jsonPath);
+          const recoveredPath = path.join(outDir, `${baseName}.recovered.json`);
+          fs.writeFileSync(recoveredPath, cleaned, 'utf8');
+          console.log(
+            `✅ Aggressively recovered JSON written: ${path.relative(
+              process.cwd(),
+              recoveredPath,
+            )}`,
+          );
+          return parsed2;
+        } catch (e2) {
+          return null;
+        }
+      }
+      return null;
+    }
+  } catch (e) {
+    return null;
+  }
 }
 
 // --- Module Summary Builder ---
@@ -230,6 +434,8 @@ function buildModuleSummaries(results: ScenarioResult[]): ModuleSummary[] {
         passed: 0,
         failed: 0,
         skipped: 0,
+        pending: 0,
+        undefined: 0,
         duration: 0,
         healthPercent: 0,
       });
@@ -238,15 +444,18 @@ function buildModuleSummaries(results: ScenarioResult[]): ModuleSummary[] {
     m.totalScenarios++;
     m.duration += r.duration;
     if (!m.features.includes(r.feature)) m.features.push(r.feature);
-    if (r.status === "passed") m.passed++;
-    else if (r.status === "failed") m.failed++;
+    if (r.status === 'passed') m.passed++;
+    else if (r.status === 'failed') m.failed++;
+    else if (r.status === 'skipped') m.skipped++;
+    else if (r.status === 'pending') m.pending++;
+    else if (r.status === 'undefined') m.undefined++;
     else m.skipped++;
   }
 
   // Calculate health percentage
-  for (const m of moduleMap.values()) {
+  Array.from(moduleMap.values()).forEach((m) => {
     m.healthPercent = m.totalScenarios > 0 ? Math.round((m.passed / m.totalScenarios) * 100) : 0;
-  }
+  });
 
   return Array.from(moduleMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -256,14 +465,50 @@ function buildModuleSummaries(results: ScenarioResult[]): ModuleSummary[] {
 function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, env: string): void {
   const modules = buildModuleSummaries(results);
   const totalScenarios = results.length;
-  const totalPassed = results.filter((r) => r.status === "passed").length;
-  const totalFailed = results.filter((r) => r.status === "failed").length;
-  const totalSkipped = totalScenarios - totalPassed - totalFailed;
+  const totalPassed = results.filter((r) => r.status === 'passed').length;
+  const totalFailed = results.filter((r) => r.status === 'failed').length;
+  const totalSkippedScenarios = results.filter((r) => r.status === 'skipped').length;
+  const totalSkippedSteps = results.reduce(
+    (sum, r) => sum + (r.steps || []).filter((s) => s.status === 'skipped').length,
+    0,
+  );
   const overallHealth = totalScenarios > 0 ? Math.round((totalPassed / totalScenarios) * 100) : 0;
   const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
   const now = new Date();
-  const reportTime = now.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "medium" });
-  const failedResults = results.filter((r) => r.status === "failed");
+  const reportTime = now.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' });
+  const failedResults = results.filter((r) => r.status === 'failed');
+
+  // Prepare attachments: write image embeddings to assets folder next to report
+  const reportDir = path.dirname(reportFilePath);
+  const reportBase = path.basename(reportFilePath, '.html');
+  const assetsDirName = `${reportBase}_assets`;
+  const assetsDir = path.join(reportDir, assetsDirName);
+  if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+
+  const attachmentMap = new Map<number, { fileName: string; mime: string }[]>();
+  results.forEach((r, idx) => {
+    if (!r.attachments || r.attachments.length === 0) return;
+    for (let j = 0; j < r.attachments.length; j++) {
+      const a = r.attachments[j];
+      if (!a || !a.mime_type || !a.data) continue;
+      if (!a.mime_type.startsWith('image/')) continue;
+      const ext = a.mime_type.includes('png')
+        ? '.png'
+        : a.mime_type.includes('jpeg') || a.mime_type.includes('jpg')
+        ? '.jpg'
+        : '.bin';
+      const fileName = `scenario-${idx}-att-${j}${ext}`;
+      const outPath = path.join(assetsDir, fileName);
+      try {
+        fs.writeFileSync(outPath, new Uint8Array(Buffer.from(a.data, 'base64')));
+        const arr = attachmentMap.get(idx) || [];
+        arr.push({ fileName, mime: a.mime_type });
+        attachmentMap.set(idx, arr);
+      } catch (e) {
+        // ignore write failures
+      }
+    }
+  });
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -364,7 +609,7 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
     /* Tables */
     .data-table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid var(--border); margin-bottom: 20px; }
     .data-table th { background: var(--primary-light); color: #fff; padding: 14px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    .data-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .data-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: #2c3e50; }
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td { background: #f8fafe; }
 
@@ -375,6 +620,17 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
     .status-badge.skipped { background: #e8f4fd; color: var(--accent); }
     .status-badge.undefined { background: #f5f5f5; color: var(--muted); }
     .status-badge.pending { background: #fef9e7; color: var(--warning); }
+
+    .clickable-image { cursor: zoom-in; transition: transform 0.2s ease-in-out; }
+    .clickable-image:hover { transform: scale(1.02); }
+    .image-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; padding: 24px; z-index: 10000; }
+    .image-modal.active { display: flex; }
+    .image-modal-content { max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,0.45); transition: transform 0.2s ease-in-out; transform: scale(1); }
+    .image-modal-close { position: absolute; top: 20px; right: 24px; color: #fff; font-size: 32px; font-weight: 700; cursor: pointer; line-height: 1; }
+    .image-modal-controls { position: absolute; top: 20px; left: 24px; display: flex; gap: 8px; }
+    .zoom-btn { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: background 0.2s ease; }
+    .zoom-btn:hover { background: rgba(255,255,255,0.2); }
+    .image-modal-caption { margin-top: 12px; color: #f3f4f6; font-size: 14px; text-align: center; }
 
     /* Scenario Details */
     .scenario-row { cursor: pointer; }
@@ -414,8 +670,9 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
         <span class="time-badge">${reportTime}</span>
       </div>
     </div>
-    <div class="header-subtitle">Execution Duration: ${formatDuration(totalDuration)} | ${totalScenarios} Scenarios across ${modules.length} Module(s)</div>
-  </div>
+    <div class="header-subtitle">Execution Duration: ${formatDuration(
+      totalDuration,
+    )} | ${totalScenarios} Scenarios across ${modules.length} Module(s)</div>
 
   <div class="nav">
     <button class="nav-btn active" onclick="showTab(this, 'overview')">Overview</button>
@@ -432,24 +689,35 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
         <div class="summary-card total clickable" onclick="filterScenarios('all')"><div class="value">${totalScenarios}</div><div class="label">Total Scenarios &#8599;</div></div>
         <div class="summary-card passed clickable" onclick="filterScenarios('passed')"><div class="value">${totalPassed}</div><div class="label">Passed &#8599;</div></div>
         <div class="summary-card failed clickable" onclick="filterScenarios('failed')"><div class="value">${totalFailed}</div><div class="label">Failed &#8599;</div></div>
-        <div class="summary-card skipped clickable" onclick="filterScenarios('skipped')"><div class="value">${totalSkipped}</div><div class="label">Skipped &#8599;</div></div>
-        <div class="summary-card health clickable" onclick="navigateToTab('modules')"><div class="value" style="color:${getHealthColor(overallHealth)}">${overallHealth}%</div><div class="label">Overall Health &#8599;</div></div>
+        <div class="summary-card skipped clickable" onclick="filterScenarios('skipped')"><div class="value">${totalSkippedScenarios}</div><div class="label">Skipped Scenarios &#8599;</div></div>
+        <div class="summary-card skipped clickable" onclick="filterScenarios('all')"><div class="value">${totalSkippedSteps}</div><div class="label">Skipped Steps &#8599;</div></div>
+        <div class="summary-card health clickable" onclick="navigateToTab('modules')"><div class="value" style="color:${getHealthColor(
+          overallHealth,
+        )}">${overallHealth}%</div><div class="label">Overall Health &#8599;</div></div>
       </div>
 
       <div class="health-bar-container">
         <div class="health-bar-header">
           <span class="health-bar-title">Execution Summary</span>
-          <span class="health-bar-percent" style="color:${getHealthColor(overallHealth)}">${overallHealth}% Pass Rate</span>
+          <span class="health-bar-percent" style="color:${getHealthColor(
+            overallHealth,
+          )}">${overallHealth}% Pass Rate</span>
         </div>
         <div class="health-bar">
-          <div class="segment passed-seg" style="width:${totalScenarios > 0 ? (totalPassed / totalScenarios) * 100 : 0}%"></div>
-          <div class="segment failed-seg" style="width:${totalScenarios > 0 ? (totalFailed / totalScenarios) * 100 : 0}%"></div>
-          <div class="segment skipped-seg" style="width:${totalScenarios > 0 ? (totalSkipped / totalScenarios) * 100 : 0}%"></div>
+          <div class="segment passed-seg" style="width:${
+            totalScenarios > 0 ? (totalPassed / totalScenarios) * 100 : 0
+          }%"></div>
+          <div class="segment failed-seg" style="width:${
+            totalScenarios > 0 ? (totalFailed / totalScenarios) * 100 : 0
+          }%"></div>
+          <div class="segment skipped-seg" style="width:${
+            totalScenarios > 0 ? (totalSkippedScenarios / totalScenarios) * 100 : 0
+          }%"></div>
         </div>
         <div class="health-bar-legend">
           <span><span class="legend-dot" style="background:var(--success)"></span>Passed (${totalPassed})</span>
           <span><span class="legend-dot" style="background:var(--danger)"></span>Failed (${totalFailed})</span>
-          <span><span class="legend-dot" style="background:var(--accent)"></span>Skipped (${totalSkipped})</span>
+          <span><span class="legend-dot" style="background:var(--accent)"></span>Skipped Scenarios (${totalSkippedScenarios})</span>
         </div>
       </div>
 
@@ -466,52 +734,92 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
           <th>Health</th>
           <th>Status</th>
         </tr>
-        ${modules.map((m, mIdx) => `
+        ${modules
+          .map(
+            (m) => `
         <tr class="module-row" onclick="navigateToModule('${m.name}')">
-          <td><strong style="color:var(--accent);">${m.name} &#8599;</strong></td>
-          <td>${m.features.length}</td>
-          <td>${m.totalScenarios}</td>
-          <td style="color:var(--success);font-weight:600;">${m.passed}</td>
-          <td style="color:${m.failed > 0 ? 'var(--danger)' : 'inherit'};font-weight:${m.failed > 0 ? '600' : '400'};${m.failed > 0 ? 'cursor:pointer;text-decoration:underline;' : ''}" ${m.failed > 0 ? `onclick="event.stopPropagation();navigateToTab('failures')"` : ''}>${m.failed}</td>
-          <td>${m.skipped}</td>
-          <td>${formatDuration(m.duration)}</td>
+          <td><strong style="color:#3498db;">${m.name} &#8599;</strong></td>
+          <td style="color:#2c3e50;">${m.features.length}</td>
+          <td style="color:#2c3e50;font-weight:600;">${m.totalScenarios}</td>
+          <td style="color:#27ae60;font-weight:600;">${m.passed}</td>
+          <td style="color:${m.failed > 0 ? '#e74c3c' : '#2c3e50'};font-weight:${
+            m.failed > 0 ? '600' : '400'
+          };${m.failed > 0 ? 'cursor:pointer;text-decoration:underline;' : ''}" ${
+            m.failed > 0 ? `onclick="event.stopPropagation();navigateToTab('failures')"` : ''
+          }>${m.failed}</td>
+          <td style="color:#2c3e50;">${m.skipped}</td>
+          <td style="color:#2c3e50;">${formatDuration(m.duration)}</td>
           <td>
             <div style="display:flex;align-items:center;gap:8px;">
               <div style="flex:1;height:6px;border-radius:3px;background:#ecf0f1;overflow:hidden;">
-                <div style="height:100%;width:${m.healthPercent}%;background:${getHealthColor(m.healthPercent)};"></div>
+                <div style="height:100%;width:${m.healthPercent}%;background:${getHealthColor(
+                  m.healthPercent,
+                )};"></div>
               </div>
-              <span style="font-size:12px;font-weight:700;color:${getHealthColor(m.healthPercent)}">${m.healthPercent}%</span>
+              <span style="font-size:12px;font-weight:700;color:${getHealthColor(
+                m.healthPercent,
+              )}">${m.healthPercent}%</span>
             </div>
           </td>
-          <td><span class="status-badge ${m.failed > 0 ? 'failed' : m.skipped > 0 ? 'skipped' : 'passed'}" ${m.failed > 0 ? `style="cursor:pointer;" onclick="event.stopPropagation();navigateToTab('failures')"` : ''}>${m.failed > 0 ? 'FAIL &#8599;' : m.skipped > 0 ? 'PARTIAL' : 'PASS'}</span></td>
-        </tr>`).join("")}
+          <td><span class="status-badge ${
+            m.failed > 0 ? 'failed' : m.skipped > 0 ? 'skipped' : 'passed'
+          }" ${
+            m.failed > 0
+              ? `style="cursor:pointer;" onclick="event.stopPropagation();navigateToTab('failures')"`
+              : ''
+          }>${m.failed > 0 ? 'FAIL &#8599;' : m.skipped > 0 ? 'PARTIAL' : 'PASS'}</span></td>
+        </tr>`,
+          )
+          .join('')}
       </table>
     </div>
 
     <!-- MODULES TAB -->
     <div id="modules" class="tab-panel">
       <div class="module-grid">
-        ${modules.map((m) => `
+        ${modules
+          .map(
+            (m) => `
         <div class="module-card" data-module="${m.name}">
           <div class="module-card-header">
             <h3>${m.name}</h3>
-            <span class="module-health-badge" style="background:${getHealthColor(m.healthPercent)}">${m.healthPercent}% ${getHealthLabel(m.healthPercent)}</span>
+            <span class="module-health-badge" style="background:${getHealthColor(
+              m.healthPercent,
+            )}">${m.healthPercent}% ${getHealthLabel(m.healthPercent)}</span>
           </div>
           <div class="module-card-body">
             <div class="module-stats">
-              <div class="module-stat" style="cursor:pointer;" onclick="filterScenarios('all')"><div class="num" style="color:var(--primary-light)">${m.totalScenarios}</div><div class="lbl">Total &#8599;</div></div>
-              <div class="module-stat" style="cursor:pointer;" onclick="filterScenarios('passed')"><div class="num" style="color:var(--success)">${m.passed}</div><div class="lbl">Passed &#8599;</div></div>
-              <div class="module-stat" style="cursor:pointer;" onclick="${m.failed > 0 ? "filterScenarios('failed')" : ''}"><div class="num" style="color:var(--danger)">${m.failed}</div><div class="lbl">Failed${m.failed > 0 ? ' &#8599;' : ''}</div></div>
-              <div class="module-stat"><div class="num" style="color:var(--accent)">${m.skipped}</div><div class="lbl">Skipped</div></div>
+              <div class="module-stat" style="cursor:pointer;" onclick="filterScenarios('all')"><div class="num" style="color:var(--primary-light)">${
+                m.totalScenarios
+              }</div><div class="lbl">Total &#8599;</div></div>
+              <div class="module-stat" style="cursor:pointer;" onclick="filterScenarios('passed')"><div class="num" style="color:var(--success)">${
+                m.passed
+              }</div><div class="lbl">Passed &#8599;</div></div>
+              <div class="module-stat" style="cursor:pointer;" onclick="${
+                m.failed > 0 ? "filterScenarios('failed')" : ''
+              }"><div class="num" style="color:var(--danger)">${
+                m.failed
+              }</div><div class="lbl">Failed${m.failed > 0 ? ' &#8599;' : ''}</div></div>
+              <div class="module-stat"><div class="num" style="color:var(--accent)">${
+                m.skipped
+              }</div><div class="lbl">Skipped</div></div>
             </div>
             <div class="module-bar">
-              <div class="segment passed-seg" style="width:${m.totalScenarios > 0 ? (m.passed / m.totalScenarios) * 100 : 0}%"></div>
-              <div class="segment failed-seg" style="width:${m.totalScenarios > 0 ? (m.failed / m.totalScenarios) * 100 : 0}%"></div>
-              <div class="segment skipped-seg" style="width:${m.totalScenarios > 0 ? (m.skipped / m.totalScenarios) * 100 : 0}%"></div>
+              <div class="segment passed-seg" style="width:${
+                m.totalScenarios > 0 ? (m.passed / m.totalScenarios) * 100 : 0
+              }%"></div>
+              <div class="segment failed-seg" style="width:${
+                m.totalScenarios > 0 ? (m.failed / m.totalScenarios) * 100 : 0
+              }%"></div>
+              <div class="segment skipped-seg" style="width:${
+                m.totalScenarios > 0 ? (m.skipped / m.totalScenarios) * 100 : 0
+              }%"></div>
             </div>
-            <div class="module-features"><strong>Features:</strong> ${m.features.join(", ")}</div>
+            <div class="module-features"><strong>Features:</strong> ${m.features.join(', ')}</div>
           </div>
-        </div>`).join("")}
+        </div>`,
+          )
+          .join('')}
       </div>
 
       <div id="module-filter-indicator" style="display:none;margin-bottom:16px;padding:10px 16px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border);align-items:center;justify-content:space-between;">
@@ -519,30 +827,40 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
         <button onclick="showAllModules()" style="background:var(--primary-light);color:#fff;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;">Show All Modules</button>
       </div>
       <h2 style="font-size:16px;margin-bottom:16px;font-weight:700;">Detailed Module Results</h2>
-      ${modules.map((m) => {
-        const moduleResults = results.filter((r) => r.module === m.name);
-        return `
+      ${modules
+        .map((m) => {
+          const moduleResults = results.filter((r) => r.module === m.name);
+          return `
         <div class="module-detail-section" data-module="${m.name}">
-        <h3 id="module-section-${modules.indexOf(m)}" style="font-size:14px;margin:20px 0 10px;padding:8px 12px;background:var(--primary-light);color:#fff;border-radius:6px;transition:box-shadow 0.3s;">${m.name} — ${m.passed}/${m.totalScenarios} Passed</h3>
+        <h3 id="module-section-${modules.indexOf(
+          m,
+        )}" style="font-size:14px;margin:20px 0 10px;padding:8px 12px;background:var(--primary-light);color:#fff;border-radius:6px;transition:box-shadow 0.3s;">${
+          m.name
+        } — ${m.passed}/${m.totalScenarios} Passed</h3>
         <table class="data-table">
           <tr><th>Scenario</th><th>Feature</th><th>Steps</th><th>Duration</th><th>Status</th></tr>
-          ${moduleResults.map((r, mi) => {
-            const failIdx = failedResults.indexOf(r);
-            const globalIdx = results.indexOf(r);
-            const clickAction = r.status === 'failed'
-              ? `onclick="navigateToFailure('failure-${failIdx}')"`
-              : `onclick="navigateToScenario(${globalIdx})"`;
-            return `
+          ${moduleResults
+            .map((r) => {
+              const failIdx = failedResults.indexOf(r);
+              const globalIdx = results.indexOf(r);
+              const clickAction =
+                r.status === 'failed'
+                  ? `onclick="navigateToFailure('failure-${failIdx}')"`
+                  : `onclick="navigateToScenario(${globalIdx})"`;
+              return `
           <tr style="cursor:pointer;" ${clickAction} class="module-row">
-            <td>${r.scenario}</td>
-            <td style="font-size:12px;color:var(--text-muted)">${r.feature}</td>
-            <td>${r.steps.length}</td>
-            <td>${formatDuration(r.duration)}</td>
+            <td><strong style="color:#2c3e50;">${escapeHtml(r.scenario || '—')}</strong></td>
+            <td style="font-size:12px;color:#555;">${escapeHtml(r.feature || '—')}</td>
+            <td style="color:#2c3e50;">${(r.steps || []).length}</td>
+            <td style="color:#2c3e50;">${escapeHtml(formatDuration(r.duration || 0))}</td>
             <td><span class="status-badge ${r.status}">${getStatusIcon(r.status)} ${r.status.toUpperCase()}${r.status === 'failed' ? ' &#8599; Root Cause' : ' &#8599; Details'}</span></td>
-          </tr>`;}).join("")}
+          </tr>`;
+            })
+            .join('')}
         </table>
         </div>`;
-      }).join("")}
+        })
+        .join('')}
     </div>
 
     <!-- ALL SCENARIOS TAB -->
@@ -553,54 +871,101 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
       </div>
       <table class="data-table">
         <tr><th>Module</th><th>Feature</th><th>Scenario</th><th>Steps</th><th>Duration</th><th>Status</th></tr>
-        ${results.map((r, i) => `
+        ${results
+          .map(
+            (r, i) => `
         <tr class="scenario-row" data-status="${r.status}" onclick="toggleRow('detail-${i}')">
-          <td><strong>${r.module}</strong></td>
-          <td style="font-size:12px;">${r.feature}</td>
-          <td>${r.scenario}</td>
-          <td>${r.steps.length}</td>
-          <td>${formatDuration(r.duration)}</td>
+          <td><strong style="color:#2c3e50;">${escapeHtml(r.module || '—')}</strong></td>
+          <td style="font-size:12px;color:#555;">${escapeHtml(r.feature || '—')}</td>
+          <td style="color:#2c3e50;font-weight:500;">${escapeHtml(r.scenario || '—')}</td>
+          <td style="color:#2c3e50;">${(r.steps || []).length}</td>
+          <td style="color:#2c3e50;">${escapeHtml(formatDuration(r.duration || 0))}</td>
           <td>
             <span class="status-badge ${r.status}">${getStatusIcon(r.status)} ${r.status.toUpperCase()}</span>
-            ${r.status === 'failed' ? `<a href="#" onclick="event.stopPropagation();navigateToFailure('failure-${failedResults.indexOf(r)}')" style="margin-left:6px;font-size:11px;color:var(--danger);font-weight:600;text-decoration:none;">View Root Cause &#8599;</a>` : ''}
+            ${
+              r.status === 'failed'
+                ? `<a href="#" onclick="event.stopPropagation();navigateToFailure('failure-${failedResults.indexOf(
+                    r,
+                  )}')" style="margin-left:6px;font-size:11px;color:var(--danger);font-weight:600;text-decoration:none;">View Root Cause &#8599;</a>`
+                : ''
+            }
           </td>
         </tr>
         <tr class="step-details" id="detail-${i}" data-status="${r.status}">
           <td colspan="6">
             <div class="step-list">
-              ${r.steps.map((s) => `
+              ${(r.steps || [])
+                .filter((s) => s.keyword && s.keyword !== 'Before' && s.keyword !== 'After')
+                .map(
+                  (s) => `
               <div class="step-item">
-                <span class="step-keyword">${s.keyword}</span>
-                <span class="step-name">${s.name}</span>
-                <span class="step-duration">${formatDuration(s.duration)}</span>
-                <span class="status-badge ${s.status}" style="font-size:10px;padding:2px 6px;">${s.status.toUpperCase()}</span>
+                <span class="step-keyword" style="color:#8e44ad;">${escapeHtml(s.keyword)}</span>
+                <span class="step-name" style="color:#2c3e50;">${escapeHtml(s.name)}</span>
+                <span class="step-duration" style="color:#7f8c8d;">${formatDuration(s.duration)}</span>
+                <span class="status-badge ${
+                  s.status
+                }" style="font-size:10px;padding:2px 6px;">${s.status.toUpperCase()}</span>
               </div>
-              ${s.errorMessage ? `<div class="error-block">${s.errorMessage.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>` : ""}`).join("")}
+              ${
+                s.errorMessage
+                  ? `<div class="error-block">${s.errorMessage
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')}</div>`
+                  : ''
+              }`,
+                )
+                .join('')}
             </div>
+            ${(attachmentMap.get(i) || [])
+              .map(
+                (a) => `
+            <div style="margin-top:12px;display:inline-block;">
+              <img src="./${assetsDirName}/${a.fileName}" class="clickable-image" onclick="openImage(this.src)" style="max-width:320px;border:1px solid #eee;border-radius:6px;">
+            </div>`,
+              )
+              .join('')}
           </td>
-        </tr>`).join("")}
+        </tr>`,
+          )
+          .join('')}
       </table>
     </div>
 
     <!-- FAILURES TAB -->
     <div id="failures" class="tab-panel">
-      ${failedResults.length === 0
-        ? `<div class="empty-state"><div class="icon">&#10004;</div><div class="msg">All tests passed! No failures to report.</div></div>`
-        : `
+      ${
+        failedResults.length === 0
+          ? `<div class="empty-state"><div class="icon">&#10004;</div><div class="msg">All tests passed! No failures to report.</div></div>`
+          : `
       <div class="summary-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
-        ${modules.filter(m => m.failed > 0).map((m) => `
-        <div class="summary-card failed">
+        ${modules
+          .filter((m) => m.failed > 0)
+          .map(
+            (m) => `
+        <div class="summary-card failed clickable" onclick="filterFailuresByModule('${m.name.replace(
+          /'/g,
+          "\\'",
+        )}')">
           <div class="value">${m.failed}</div>
           <div class="label">${m.name} Failures</div>
-        </div>`).join("")}
+        </div>`,
+          )
+          .join('')}
+      </div>
+      <div id="failure-filter-indicator" style="display:none;margin-top:16px;margin-bottom:16px;padding:10px 16px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:13px;">Showing failures for module: <strong id="failure-filter-label"></strong></span>
+        <button onclick="showAllFailures()" style="background:var(--primary-light);color:#fff;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;">Show All Failures</button>
       </div>
 
-      ${failedResults.map((r, idx) => {
-        const failedStep = r.steps.find((s) => s.status === "failed");
-        const errorMsg = failedStep?.errorMessage || "No error details available";
-        const rootCause = extractRootCause(errorMsg);
-        return `
-      <div id="failure-${idx}" class="failure-card" style="background:var(--card-bg);border-radius:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:20px;overflow:hidden;transition:box-shadow 0.3s;">
+          ${failedResults
+            .map((r, idx) => {
+              const failedStep = (r.steps || []).find((s) => s.status === 'failed');
+              const errorMsg = failedStep?.errorMessage || 'No error details available';
+              const rootCause = extractRootCause(errorMsg);
+              const globalIdx = results.indexOf(r);
+              const images = attachmentMap.get(globalIdx) || [];
+              return `
+      <div id="failure-${idx}" class="failure-card" data-module="${r.module}" style="background:var(--card-bg);border-radius:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:20px;overflow:hidden;transition:box-shadow 0.3s;">
         <div style="background:#fde8e8;padding:14px 20px;border-bottom:1px solid #fce4e4;display:flex;justify-content:space-between;align-items:center;">
           <div>
             <span style="font-size:18px;margin-right:8px;">&#10008;</span>
@@ -613,19 +978,19 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
           <table style="width:100%;border:none;box-shadow:none;margin:0;">
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Feature</td>
-              <td style="font-size:13px;padding:6px 12px;border:none;">${r.feature}</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${escapeHtml(r.feature)}</td>
             </tr>
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Scenario</td>
-              <td style="font-size:13px;padding:6px 12px;border:none;">${r.scenario}</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${escapeHtml(r.scenario)}</td>
             </tr>
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Failed Step</td>
-              <td style="font-size:13px;padding:6px 12px;border:none;"><span class="step-keyword">${failedStep?.keyword || ""}</span> ${failedStep?.name || "N/A"}</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;"><span class="step-keyword">${failedStep?.keyword || ''}</span> ${escapeHtml(failedStep?.name || 'N/A')}</td>
             </tr>
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Duration</td>
-              <td style="font-size:13px;padding:6px 12px;border:none;">${formatDuration(r.duration)}</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${formatDuration(r.duration)}</td>
             </tr>
           </table>
 
@@ -633,22 +998,46 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
               <span style="background:var(--danger);color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">ROOT CAUSE</span>
             </div>
-            <div style="font-size:13px;color:#c0392b;font-weight:500;line-height:1.6;">${rootCause.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+            <div style="font-size:13px;color:#c0392b;font-weight:500;line-height:1.6;">${rootCause.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
           </div>
+
+          ${images
+                .map(
+                  (img) => `
+            <div style="margin-top:12px;">
+              <img src="./${assetsDirName}/${img.fileName}" class="clickable-image" onclick="openImage(this.src)" style="max-width:480px;border:1px solid #eee;border-radius:6px;">
+            </div>`,
+                )
+                .join('')}
 
           <details style="margin-top:12px;">
             <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);font-weight:600;padding:6px 0;">View Full Stack Trace</summary>
-            <div class="error-block" style="margin-top:8px;">${errorMsg.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+            <div class="error-block" style="margin-top:8px;">${errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
           </details>
         </div>
       </div>`;
-      }).join("")}`}
+            })
+            .join('')}`
+      }
     </div>
 
   </div>
 
+  <div id="image-modal" class="image-modal" onclick="closeImageModal()">
+    <div class="image-modal-controls" onclick="event.stopPropagation()">
+      <button class="zoom-btn" onclick="zoomOut()">-</button>
+      <button class="zoom-btn" onclick="zoomIn()">+</button>
+      <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+    </div>
+    <span class="image-modal-close" onclick="event.stopPropagation(); closeImageModal()">&times;</span>
+    <img id="image-modal-img" class="image-modal-content" src="" alt="Screenshot preview" onclick="event.stopPropagation()">
+    <div id="image-modal-caption" class="image-modal-caption"></div>
+  </div>
+
   <div class="footer">
-    QA Automation Report | Environment: <strong>${env.toUpperCase()}</strong> | Generated: ${reportTime} | Duration: ${formatDuration(totalDuration)}
+    QA Automation Report | Environment: <strong>${env.toUpperCase()}</strong> | Generated: ${reportTime} | Duration: ${formatDuration(
+      totalDuration,
+    )}
   </div>
 
   <script>
@@ -700,6 +1089,28 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
         }
       }, 100);
     }
+    function filterFailuresByModule(moduleName) {
+      navigateToTab('failures');
+      setTimeout(() => {
+        const cards = document.querySelectorAll('#failures .failure-card');
+        const indicator = document.getElementById('failure-filter-indicator');
+        const label = document.getElementById('failure-filter-label');
+        cards.forEach((card) => {
+          const moduleAttr = card.getAttribute('data-module');
+          card.style.display = moduleAttr === moduleName ? '' : 'none';
+        });
+        if (indicator && label) {
+          indicator.style.display = 'flex';
+          label.textContent = moduleName;
+        }
+      }, 50);
+    }
+    function showAllFailures() {
+      const cards = document.querySelectorAll('#failures .failure-card');
+      const indicator = document.getElementById('failure-filter-indicator');
+      cards.forEach((card) => { card.style.display = ''; });
+      if (indicator) indicator.style.display = 'none';
+    }
     function filterScenarios(status) {
       navigateToTab('scenarios');
       setTimeout(() => {
@@ -735,50 +1146,293 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
       const el = document.getElementById(id);
       el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
     }
+    let currentImageScale = 1;
+    const ZOOM_STEP = 0.2;
+    const MIN_ZOOM = 0.5;
+    const MAX_ZOOM = 3;
+    function openImage(src) {
+      const modal = document.getElementById('image-modal');
+      const img = document.getElementById('image-modal-img');
+      const caption = document.getElementById('image-modal-caption');
+      if (modal && img) {
+        currentImageScale = 1;
+        img.style.transform = 'scale(1)';
+        img.setAttribute('src', src);
+        if (caption) caption.textContent = 'Zoom: 100% | Click outside the image or the × to close';
+        modal.classList.add('active');
+      }
+    }
+    function closeImageModal() {
+      const modal = document.getElementById('image-modal');
+      const img = document.getElementById('image-modal-img');
+      if (modal) modal.classList.remove('active');
+      if (img) {
+        img.setAttribute('src', '');
+        img.style.transform = 'scale(1)';
+      }
+    }
+    function setZoom(scale) {
+      const img = document.getElementById('image-modal-img');
+      const caption = document.getElementById('image-modal-caption');
+      currentImageScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale));
+      if (img) img.style.transform = 'scale(' + currentImageScale + ')';
+      if (caption) caption.textContent = 'Zoom: ' + Math.round(currentImageScale * 100) + '% | Click outside the image or the × to close';
+    }
+    function zoomIn() {
+      setZoom(currentImageScale + ZOOM_STEP);
+    }
+    function zoomOut() {
+      setZoom(currentImageScale - ZOOM_STEP);
+    }
+    function resetZoom() {
+      setZoom(1);
+    }
   </script>
 </body>
 </html>`;
 
   const dir = path.dirname(reportFilePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(reportFilePath, html, "utf-8");
+  fs.writeFileSync(reportFilePath, html, 'utf-8');
   console.log(`\n✅ Custom HTML Report generated: ${reportFilePath}\n`);
 }
 
+async function waitForStableJsonFile(
+  filePath: string,
+  requiredStableCount = 4,
+  intervalMs = 500,
+  timeoutMs = 30000,
+): Promise<void> {
+  const startTime = Date.now();
+  let previousSize: number | null = null;
+  let stableCount = 0;
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const stats = fs.statSync(filePath);
+      const currentSize = stats.size;
+      if (currentSize === 0) {
+        stableCount = 0;
+      } else if (previousSize !== null && currentSize === previousSize) {
+        stableCount += 1;
+      } else {
+        stableCount = 0;
+      }
+      previousSize = currentSize;
+      if (stableCount >= requiredStableCount) {
+        try {
+          const fileContent = fs.readFileSync(filePath, 'utf8');
+          JSON.parse(fileContent);
+          return;
+        } catch {
+          stableCount = 0;
+        }
+      }
+    } catch (err) {
+      // File may not yet exist or be fully available; retry
+      stableCount = 0;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+async function waitForJsonDirectoryQuiet(
+  dirPath: string,
+  quietMs = 2000,
+  timeoutMs = 120000,
+  pollInterval = 500,
+): Promise<void> {
+  const start = Date.now();
+  let lastChange = Date.now();
+  let previousFiles = new Map<string, number>();
+
+  const snapshot = () => {
+    const files = fs.readdirSync(dirPath).filter((f) => f.endsWith('.json'));
+    const map = new Map<string, number>();
+    for (const f of files) {
+      try {
+        map.set(f, fs.statSync(path.join(dirPath, f)).mtimeMs);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return map;
+  };
+
+  previousFiles = snapshot();
+
+  while (Date.now() - start < timeoutMs) {
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, pollInterval));
+    const current = snapshot();
+    // detect changes: new files or mtime changes
+    let changed = false;
+    if (current.size !== previousFiles.size) changed = true;
+    else {
+      for (const entry of Array.from(current.entries())) {
+        const [k, v] = entry;
+        if (!previousFiles.has(k) || previousFiles.get(k) !== v) {
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      lastChange = Date.now();
+      previousFiles = current;
+      continue;
+    }
+
+    if (Date.now() - lastChange >= quietMs) return;
+  }
+}
+
+// (previous helper functions removed — reporter now selects JSON files by mtime window)
+
 // --- Public API ---
 
-export function generateReport(): void {
-  const env = process.env.ENV_NAME || "qa";
-  const reportName = getReportFileName();
-  const reportsDir = path.resolve(process.cwd(), "reports");
+export async function generateReport(): Promise<void> {
+  try {
+    const env = process.env.ENV_NAME || 'qa';
+    const reportName = getReportFileName();
+    const reportsDir = path.resolve(process.cwd(), 'reports');
 
-  if (!fs.existsSync(reportsDir)) {
-    console.log("No reports/ directory found. Run tests first.");
-    return;
+    console.log(`\n📊 Generating HTML report for ${env.toUpperCase()} environment...`);
+
+    if (!fs.existsSync(reportsDir)) {
+      console.log('❌ No reports/ directory found. Run tests first.');
+      return;
+    }
+
+    const jsonFiles = fs.readdirSync(reportsDir).filter((f) => f.endsWith('.json'));
+
+    if (jsonFiles.length === 0) {
+      console.log('❌ No JSON report files found in reports/ directory. Run tests first.');
+      return;
+    }
+
+    // Prefer collecting JSON files that are part of the same run by modification time.
+    // Pick the newest JSON file mtime and collect all JSON files modified within `windowMs`.
+    // Wait for directory to settle so late worker JSON files get created
+    await waitForJsonDirectoryQuiet(reportsDir, 2000, 120000, 500);
+
+    const fileStats = fs
+      .readdirSync(reportsDir)
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => ({ f, mtime: fs.statSync(path.join(reportsDir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+    const newest = fileStats[0];
+    if (!newest) {
+      console.log('❌ No JSON report files found after stat.');
+      return;
+    }
+    const windowMs = 2 * 60 * 1000; // 2 minutes window
+    const runJsonFiles = fileStats
+      .filter((s) => newest.mtime - s.mtime <= windowMs)
+      .map((s) => s.f);
+    if (runJsonFiles.length === 0) {
+      console.log(
+        '❌ No current-run JSON report files found in reports/ directory. Run tests first.',
+      );
+      return;
+    }
+    runJsonFiles.sort();
+    console.log(
+      `📄 Found JSON report files for current run (by mtime window): ${runJsonFiles.join(', ')}`,
+    );
+
+    const results: ScenarioResult[] = [];
+    const maxAttempts = 20;
+
+    for (const reportFile of runJsonFiles) {
+      const jsonPath = path.join(reportsDir, reportFile);
+      console.log(`⏳ Waiting for JSON file to stabilize before parsing: ${reportFile}`);
+      await waitForStableJsonFile(jsonPath, 4, 500, 30000);
+
+      let fileResults: ScenarioResult[] | null = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          fileResults = parseJsonReport(jsonPath);
+          break;
+        } catch (err) {
+          const waitMs = 1000;
+          console.log(
+            `⚠️ JSON parse failed for ${reportFile} (attempt ${attempt}/${maxAttempts}), retrying in ${waitMs}ms...`,
+          );
+          // Save diagnostics for investigation
+          // eslint-disable-next-line no-await-in-loop
+          await saveParseDiagnostics(jsonPath, attempt, err).catch(() => {});
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(waitMs);
+        }
+      }
+
+      if (!fileResults || fileResults.length === 0) {
+        console.log(
+          `⚠️ No scenario results found in ${reportFile} after retries. Attempting recovery...`,
+        );
+        // Attempt to repair truncated JSON by trimming to last closing bracket
+        const repaired = await attemptRepairJson(jsonPath);
+        if (repaired && Array.isArray(repaired) && repaired.length > 0) {
+          try {
+            const repairedResults = parseJsonContent(repaired);
+            if (repairedResults && repairedResults.length > 0) {
+              console.log(
+                `✅ Parsed ${repairedResults.length} scenarios from repaired JSON for ${reportFile}`,
+              );
+              fileResults = repairedResults;
+            }
+          } catch (e) {
+            console.log(`⚠️ Repaired JSON still invalid for ${reportFile}: ${String(e)}`);
+          }
+        } else {
+          console.log(`⚠️ Could not recover JSON for ${reportFile}. Skipping this file.`);
+        }
+      }
+
+      if (fileResults && fileResults.length > 0) {
+        results.push(...fileResults);
+      }
+    }
+
+    if (results.length === 0) {
+      console.log('❌ No scenario results found in current run JSON files after retries.');
+      return;
+    }
+
+    console.log(`✅ Parsed ${results.length} scenarios from ${runJsonFiles.length} JSON file(s)`);
+
+    const htmlPath = path.join(reportsDir, `${reportName}.html`);
+    generateHtmlReport(results, htmlPath, env);
+  } catch (error) {
+    console.error('❌ Error generating report:', error);
   }
-
-  const jsonFiles = fs.readdirSync(reportsDir).filter((f) => f.endsWith(".json"));
-
-  if (jsonFiles.length === 0) {
-    console.log("No JSON report files found in reports/ directory. Run tests first.");
-    return;
-  }
-
-  // Pick the latest JSON report by filename (sorted descending)
-  const latestJson = jsonFiles.sort().reverse()[0];
-  const jsonPath = path.join(reportsDir, latestJson);
-  const results = parseJsonReport(jsonPath);
-
-  if (results.length === 0) {
-    console.log(`No scenario results found in ${latestJson}.`);
-    return;
-  }
-
-  const htmlPath = path.join(reportsDir, `${reportName}.html`);
-  generateHtmlReport(results, htmlPath, env);
 }
 
 // Auto-run when executed directly via: ts-node src/support/reporters/custom-reporter.ts
 if (require.main === module) {
-  generateReport();
+  (async () => {
+    try {
+      const delayMs = Number(process.env.REPORT_GENERATOR_DELAY_MS || '0');
+      if (delayMs > 0) await sleep(delayMs);
+      await generateReport();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Error in detached report generator:', e);
+    } finally {
+      const lockFile = process.env.REPORT_LOCK_FILE;
+      if (lockFile) {
+        try {
+          if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+          // eslint-disable-next-line no-console
+          console.log('Removed report lock:', lockFile);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to remove report lock:', String(e));
+        }
+      }
+    }
+  })();
 }

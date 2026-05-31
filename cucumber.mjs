@@ -1,12 +1,12 @@
 // ============================================================================
-// CUCUMBER CONFIGURATION - Portable across projects
+// CUCUMBER CONFIGURATION
 // ============================================================================
-// Env vars: ENV_NAME (default: "qa"), TAGS (optional tag filter)
+// Env vars: ENV_NAME (default: "qa")
 // Report output: reports/report_<env>_<dd>_<mm>_<yyyy>_<hh>_<mm>_<ss>_<AM|PM>
 // ============================================================================
 
 function getReportFileName() {
-  const env = process.env.ENV_NAME || "qa";
+  const env = (process.env.ENV_NAME || "qa").toLowerCase();
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -25,10 +25,9 @@ const reportName = getReportFileName();
 const common = {
   requireModule: ["ts-node/register"],
   require: [
-    "./src/steps/*.ts",
-    "./src/steps/step_definitions/**/*.ts",
+    "./src/steps/**/*.ts",
     "./src/support/custom-world.ts",
-    "./src/support/hooks.ts",
+    "./src/support/common-hooks.ts",
   ],
   paths: ["./features/**/*.feature"],
   publish: false,
@@ -39,8 +38,5 @@ const common = {
   formatOptions: { snippetInterface: "async-await" },
 };
 
-const defaultProfile = { ...common };
-const regression = { ...common, tags: "@regression" };
-
-export default defaultProfile;
-export { regression };
+export default common;
+export const regression = { ...common, tags: "@regression" };
