@@ -832,7 +832,16 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
                   : `onclick="navigateToScenario(${globalIdx})"`;
               return `
           <tr style="cursor:pointer;" ${clickAction} class="module-row">
-            <td><strong style="color:#2c3e50;">${escapeHtml(r.scenario || '—')}</strong></td>
+            <td><strong style="color:#2c3e50;">${escapeHtml(r.scenario || '—')}</strong>${
+              (r.tags || []).length > 0
+                ? `<div style="margin-top:3px;">${(r.tags || [])
+                    .map(
+                      (tag) =>
+                        `<span style="display:inline-block;background:#e8f4fd;color:#2980b9;font-size:10px;padding:1px 5px;border-radius:3px;margin:1px 2px 1px 0;font-weight:500;">${escapeHtml(tag)}</span>`,
+                    )
+                    .join('')}</div>`
+                : ''
+            }</td>
             <td style="font-size:12px;color:#555;">${escapeHtml(r.feature || '—')}</td>
             <td style="color:#2c3e50;">${(r.steps || []).length}</td>
             <td style="color:#2c3e50;">${escapeHtml(formatDuration(r.duration || 0))}</td>
@@ -857,10 +866,19 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
         ${results
           .map(
             (r, i) => `
-        <tr class="scenario-row" data-status="${r.status}" onclick="toggleRow('detail-${i}')">
+        <tr class="scenario-row" data-status="${r.status}" data-tags="${(r.tags || []).join(' ')}" onclick="toggleRow('detail-${i}')">
           <td><strong style="color:#2c3e50;">${escapeHtml(r.module || '—')}</strong></td>
           <td style="font-size:12px;color:#555;">${escapeHtml(r.feature || '—')}</td>
-          <td style="color:#2c3e50;font-weight:500;">${escapeHtml(r.scenario || '—')}</td>
+          <td style="color:#2c3e50;font-weight:500;">${escapeHtml(r.scenario || '—')}${
+            (r.tags || []).length > 0
+              ? `<div style="margin-top:4px;">${(r.tags || [])
+                  .map(
+                    (tag) =>
+                      `<span style="display:inline-block;background:#e8f4fd;color:#2980b9;font-size:10px;padding:2px 6px;border-radius:3px;margin:1px 3px 1px 0;font-weight:500;">${escapeHtml(tag)}</span>`,
+                  )
+                  .join('')}</div>`
+              : ''
+          }</td>
           <td style="color:#2c3e50;">${(r.steps || []).length}</td>
           <td style="color:#2c3e50;">${escapeHtml(formatDuration(r.duration || 0))}</td>
           <td>
@@ -966,7 +984,20 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Scenario</td>
               <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${escapeHtml(r.scenario)}</td>
-            </tr>
+            </tr>${
+              (r.tags || []).length > 0
+                ? `
+            <tr style="border:none;">
+              <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Tags</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;">${(r.tags || [])
+                  .map(
+                    (tag) =>
+                      `<span style="display:inline-block;background:#e8f4fd;color:#2980b9;font-size:10px;padding:2px 6px;border-radius:3px;margin:1px 3px 1px 0;font-weight:500;">${escapeHtml(tag)}</span>`,
+                  )
+                  .join('')}</td>
+            </tr>`
+                : ''
+            }
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Failed Step</td>
               <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;"><span class="step-keyword">${failedStep?.keyword || ''}</span> ${escapeHtml(failedStep?.name || 'N/A')}</td>
