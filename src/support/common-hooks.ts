@@ -5,6 +5,12 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
+// Safe import of csvToMap (csv-parse must be installed)
+let csvToMap: (() => Promise<Map<string, string>>) | undefined;
+try {
+  csvToMap = require("../utils/excel.helper").csvToMap;
+} catch (_) { /* excel.helper or csv-parse not available */ }
+
 // --- Config: reads from ./config.ts if available, otherwise falls back to env vars ---
 let BASE_URL = process.env.BASE_URL || "";
 let browserName = (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium";
@@ -49,13 +55,29 @@ BeforeAll(async function () {
 Before(async function (this: ICustomWorld, scenario) {
   this.startTime = new Date();
   this.testName = scenario.pickle.name;
+  this.feature = scenario.pickle;
   console.log(`Starting scenario: ${this.testName}`);
+
+  // Load CSV test data map
+  if (csvToMap) {
+    try {
+      this.global_data_map = await csvToMap();
+    } catch (e) {
+      console.log("Warning: Could not load CSV test data:", String(e));
+    }
+  }
 
   this.context = await browser.newContext({
     viewport: null,
   });
   this.page = await this.context.newPage();
   this.page.setDefaultTimeout(TIMEOUT);
+
+  // Create second context for multi-app scenarios (e.g., WelSync)
+  this.context1 = await browser.newContext({
+    viewport: null,
+  });
+
   if (BASE_URL) {
     await this.page.goto(BASE_URL);
   }
@@ -77,8 +99,14 @@ After(async function (this: ICustomWorld, scenario) {
   if (this.page) {
     await this.page.close();
   }
+  if (this.page1) {
+    await this.page1.close();
+  }
   if (this.context) {
     await this.context.close();
+  }
+  if (this.context1) {
+    await this.context1.close();
   }
 });
 
