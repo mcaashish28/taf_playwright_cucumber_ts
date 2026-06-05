@@ -29,6 +29,7 @@ interface StepResult {
   status: string;
   duration: number;
   errorMessage?: string;
+  line?: number;
 }
 
 interface ScenarioResult {
@@ -294,6 +295,7 @@ function parseJsonReport(jsonFilePath: string): ScenarioResult[] {
           status: stepStatus,
           duration: stepDuration,
           errorMessage: step.result?.error_message,
+          line: step.line,
         });
         if (stepStatus === 'failed') scenarioStatus = 'failed';
         else if (stepStatus === 'skipped' && scenarioStatus !== 'failed')
@@ -345,6 +347,7 @@ function parseJsonContent(raw: any): ScenarioResult[] {
           status: stepStatus,
           duration: stepDuration,
           errorMessage: step.result?.error_message,
+          line: step.line,
         });
         if (stepStatus === 'failed') scenarioStatus = 'failed';
         else if (stepStatus === 'skipped' && scenarioStatus !== 'failed')
@@ -901,7 +904,11 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
                   (s) => `
               <div class="step-item">
                 <span class="step-keyword" style="color:#8e44ad;">${escapeHtml(s.keyword)}</span>
-                <span class="step-name" style="color:#2c3e50;">${escapeHtml(s.name)}</span>
+                <span class="step-name" style="color:#2c3e50;">${escapeHtml(s.name)}</span>${
+                  s.line
+                    ? ` <span style="color:#7f8c8d;font-size:11px;font-family:'SF Mono',Monaco,monospace;">:${s.line}</span>`
+                    : ''
+                }
                 <span class="step-duration" style="color:#7f8c8d;">${formatDuration(s.duration)}</span>
                 <span class="status-badge ${
                   s.status
@@ -981,6 +988,15 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Feature</td>
               <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${escapeHtml(r.feature)}</td>
             </tr>
+            ${
+              r.featureUri
+                ? `
+            <tr style="border:none;">
+              <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Feature File</td>
+              <td style="font-size:12px;padding:6px 12px;border:none;color:#2c3e50;font-family:'SF Mono',Monaco,monospace;word-break:break-all;">${escapeHtml(r.featureUri)}</td>
+            </tr>`
+                : ''
+            }
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Scenario</td>
               <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${escapeHtml(r.scenario)}</td>
@@ -1000,8 +1016,17 @@ function generateHtmlReport(results: ScenarioResult[], reportFilePath: string, e
             }
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Failed Step</td>
-              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;"><span class="step-keyword">${failedStep?.keyword || ''}</span> ${escapeHtml(failedStep?.name || 'N/A')}</td>
+              <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;"><span class="step-keyword">${failedStep?.keyword || ''}</span> ${escapeHtml(failedStep?.name || 'N/A')}${failedStep?.line ? ` <span style="color:var(--danger);font-weight:600;font-family:'SF Mono',Monaco,monospace;">(line ${failedStep.line})</span>` : ''}</td>
             </tr>
+            ${
+              failedStep?.line && r.featureUri
+                ? `
+            <tr style="border:none;">
+              <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Location</td>
+              <td style="font-size:12px;padding:6px 12px;border:none;color:#c0392b;font-family:'SF Mono',Monaco,monospace;word-break:break-all;">${escapeHtml(r.featureUri)}:${failedStep.line}</td>
+            </tr>`
+                : ''
+            }
             <tr style="border:none;">
               <td style="width:120px;font-weight:600;font-size:12px;color:var(--text-muted);text-transform:uppercase;padding:6px 12px;border:none;">Duration</td>
               <td style="font-size:13px;padding:6px 12px;border:none;color:#2c3e50;">${formatDuration(r.duration)}</td>
