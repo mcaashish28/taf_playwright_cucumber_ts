@@ -1,7 +1,7 @@
-@module_1
-Feature: Module 1 - Scenario 4
+@regression @module_1 @dropdown
+Feature: Dropdown Selection
 
-  Scenario: Module 1 Scenario 4
-    Given I perform a prerequisite action
-    When I perform the action for scenario 4
-    Then I should see the expected result for scenario 4
+  Scenario: User selects an option from the dropdown using test data
+    Given I open the Dropdown page
+    When I select dropdown option from test data "dropdownOption"
+    Then the selected dropdown option should match test data "dropdownOption"

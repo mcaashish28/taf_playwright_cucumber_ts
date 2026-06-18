@@ -1,0 +1,2 @@
+Sample upload file for the automation framework.
+Used by Module 4 - File Upload scenario.

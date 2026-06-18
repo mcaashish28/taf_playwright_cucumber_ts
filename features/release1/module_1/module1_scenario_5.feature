@@ -1,7 +1,8 @@
-@module_1
-Feature: Module 1 - Scenario 5
+@regression @module_1 @add_remove
+Feature: Add and Remove Elements
 
-  Scenario: Module 1 Scenario 5
-    Given I perform a prerequisite action
-    When I perform the action for scenario 5
-    Then I should see the expected result for scenario 5
+  Scenario: User adds and removes elements dynamically using test data
+    Given I open the Add Remove Elements page
+    When I add elements from test data "elementsToAdd"
+    And I remove elements from test data "elementsToRemove"
+    Then the remaining element count should be 1

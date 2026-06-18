@@ -1,7 +1,7 @@
-@regression
-Feature: Playwright Docs - Installation Page Navigation Links
+@regression @module_1 @login
+Feature: Form Authentication - Invalid Login
 
-  Scenario: Verify sidebar navigation links on Installation page
-    Given I navigate to the Installation page
-    Then I should see the "Writing tests" link in the sidebar
-    And I should see the "Generating tests" link in the sidebar
+  Scenario: User cannot log in with invalid credentials
+    Given I open the Login page
+    When I login using test data "invalidUser" and "invalidPassword"
+    Then the flash message should contain test data "loginFailureMessage"

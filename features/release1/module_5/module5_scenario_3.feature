@@ -1,7 +1,6 @@
-@module_5
-Feature: Module 5 - Scenario 3
+@regression @module_5 @disappearing
+Feature: Disappearing Elements
 
-  Scenario: Module 5 Scenario 3
-    Given I perform a prerequisite action
-    When I perform the action for scenario 3
-    Then I should see the expected result for scenario 3
+  Scenario: User verifies an expected menu item is present
+    Given I open the Disappearing Elements page
+    Then the menu should contain test data "disappearingExpectedItem"

@@ -1,7 +1,6 @@
-@module_5
-Feature: Module 5 - Scenario 4
+@regression @module_5 @broken_images
+Feature: Broken Images
 
-  Scenario: Module 5 Scenario 4
-    Given I perform a prerequisite action
-    When I perform the action for scenario 4
-    Then I should see the expected result for scenario 4
+  Scenario: User counts the broken images on the page
+    Given I open the Broken Images page
+    Then the number of broken images should match test data "brokenImagesExpectedCountWrong"

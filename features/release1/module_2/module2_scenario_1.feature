@@ -1,7 +1,7 @@
-@regression
-Feature: Playwright Docs - Writing Tests Page
+@regression @module_2 @dynamic_loading
+Feature: Dynamic Loading
 
-  Scenario: Verify Writing Tests page title and heading
-    Given I navigate to the Writing Tests page
-    Then the page title should contain "Writing tests"
-    And the page heading should display "Writing tests"
+  Scenario: User waits for dynamically loaded content
+    Given I open the Dynamic Loading page
+    When I start the dynamic loading process
+    Then the finish text should match test data "dynamicLoadingMessage"

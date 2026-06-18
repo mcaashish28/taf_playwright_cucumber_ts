@@ -1,7 +1,7 @@
-@module_4
-Feature: Module 4 - Scenario 5
+@regression @module_4 @notification
+Feature: Notification Messages
 
-  Scenario: Module 4 Scenario 5
-    Given I perform a prerequisite action
-    When I perform the action for scenario 5
-    Then I should see the expected result for scenario 5
+  Scenario: User triggers a notification message
+    Given I open the Notification Message page
+    When I trigger the notification
+    Then the notification should contain test data "notificationKeyword"

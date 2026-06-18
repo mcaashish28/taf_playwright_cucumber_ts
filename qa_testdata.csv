@@ -1,0 +1,38 @@
+key,value
+validUser,tomsmith
+validPassword,SuperSecretPassword!
+invalidUser,invalid_user
+invalidPassword,wrong_password
+loginSuccessMessage,You logged into a secure area!
+loginFailureMessage,Your username is invalid!
+dropdownOption,Option 1
+elementsToAdd,3
+elementsToRemove,2
+iframeText,Hello from automation framework!
+hoverUserIndex,0
+hoverUserCaption,name: user1
+keyPressInput,A
+keyPressResult,You entered: A
+dynamicLoadingMessage,Hello World!
+checkboxOneState,checked
+checkboxTwoState,unchecked
+tableLastName,Bach
+tableExpectedEmail,fbach@yahoo.com
+inputNumberValue,42
+sliderTargetValue,2.5
+uploadFileName,sample-upload.txt
+windowNewWindowText,New Window
+nestedFrameMiddleText,MIDDLE
+notificationKeyword,Action
+basicAuthUser,admin
+basicAuthPassword,admin
+basicAuthSuccessText,Congratulations! You must have the proper credentials.
+dynamicControlsInputText,Hello dynamic input
+disappearingExpectedItem,Home
+brokenImagesExpectedCount,2
+infiniteScrollMinParagraphs,3
+loginSuccessMessageWrong,You have been logged out!
+keyPressResultWrong,You entered: Z
+inputNumberValueWrong,99
+windowNewWindowTextWrong,Old Window
+brokenImagesExpectedCountWrong,5

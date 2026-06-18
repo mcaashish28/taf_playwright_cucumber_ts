@@ -1,7 +1,7 @@
-@module_2
-Feature: Module 2 - Scenario 3
+@regression @module_2 @hovers
+Feature: Hovers
 
-  Scenario: Module 2 Scenario 3
-    Given I perform a prerequisite action
-    When I perform the action for scenario 3
-    Then I should see the expected result for scenario 3
+  Scenario: User hovers over a profile and sees the caption from test data
+    Given I open the Hovers page
+    When I hover over user from test data "hoverUserIndex"
+    Then the caption should match test data "hoverUserCaption"

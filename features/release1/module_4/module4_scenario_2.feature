@@ -1,7 +1,7 @@
-@module_4
-Feature: Module 4 - Scenario 2
+@regression @module_4 @download
+Feature: File Download
 
-  Scenario: Module 4 Scenario 2
-    Given I perform a prerequisite action
-    When I perform the action for scenario 2
-    Then I should see the expected result for scenario 2
+  Scenario: User downloads a file successfully
+    Given I open the File Download page
+    When I download the first available file
+    Then the downloaded file should exist on disk

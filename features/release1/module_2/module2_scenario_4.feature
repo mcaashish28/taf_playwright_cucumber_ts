@@ -1,7 +1,7 @@
-@module_2
-Feature: Module 2 - Scenario 4
+@regression @module_2 @iframe
+Feature: iFrame Editor
 
-  Scenario: Module 2 Scenario 4
-    Given I perform a prerequisite action
-    When I perform the action for scenario 4
-    Then I should see the expected result for scenario 4
+  Scenario: User types text inside an iframe editor using test data
+    Given I open the iFrame page
+    When I type test data "iframeText" into the iframe editor
+    Then the iframe editor should contain test data "iframeText"

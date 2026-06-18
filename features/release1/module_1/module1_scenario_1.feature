@@ -1,7 +1,8 @@
-@regression
-Feature: Playwright Docs - Installation Page
+@regression @module_1 @login
+Feature: Form Authentication - Valid Login
 
-  Scenario: Verify Installation page title and heading
-    Given I navigate to the Installation page
-    Then the page title should contain "Installation"
-    And the page heading should display "Installation"
+  Scenario: User logs in with valid credentials from test data
+    Given I open the Login page
+    When I login using test data "validUser" and "validPassword"
+    Then I should land on the Secure Area
+    And the flash message should contain test data "loginSuccessMessageWrong"

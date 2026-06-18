@@ -1,7 +1,7 @@
-@module_3
-Feature: Module 3 - Scenario 1
+@regression @module_3 @tables
+Feature: Data Tables - Lookup
 
-  Scenario: Module 3 Scenario 1
-    Given I perform a prerequisite action
-    When I perform the action for scenario 1
-    Then I should see the expected result for scenario 1
+  Scenario: User finds a user's email by last name in the data table
+    Given I open the Tables page
+    When I look up the email for last name from test data "tableLastName"
+    Then the email should match test data "tableExpectedEmail"

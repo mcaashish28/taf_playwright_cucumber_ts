@@ -1,7 +1,6 @@
-@module_3
-Feature: Module 3 - Scenario 5
+@regression @module_3 @tables
+Feature: Data Tables - Row Count
 
-  Scenario: Module 3 Scenario 5
-    Given I perform a prerequisite action
-    When I perform the action for scenario 5
-    Then I should see the expected result for scenario 5
+  Scenario: User verifies the data table has the expected number of rows
+    Given I open the Tables page
+    Then the data table should have 4 rows

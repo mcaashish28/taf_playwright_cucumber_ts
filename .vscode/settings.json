@@ -1,0 +1,17 @@
+{
+  "cucumber.features": [
+    "features/**/*.feature"
+  ],
+  "cucumber.glue": [
+    "src/steps/**/*.ts",
+    "src/support/**/*.ts"
+  ],
+  "cucumber.snippets.templates": {
+    "ts": "{{ keyword }}('{{ pattern }}', async function ({{ parameters }}) {\n  // Write code here\n});\n"
+  },
+  "[cucumber]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.wordWrap": "on"
+  }
+}

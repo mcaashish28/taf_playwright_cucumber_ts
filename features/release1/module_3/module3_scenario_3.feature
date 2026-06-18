@@ -1,7 +1,7 @@
-@module_3
-Feature: Module 3 - Scenario 3
+@regression @module_3 @inputs
+Feature: Numeric Inputs
 
-  Scenario: Module 3 Scenario 3
-    Given I perform a prerequisite action
-    When I perform the action for scenario 3
-    Then I should see the expected result for scenario 3
+  Scenario: User enters a number into the input field
+    Given I open the Inputs page
+    When I enter the number from test data "inputNumberValue"
+    Then the input value should match test data "inputNumberValueWrong"

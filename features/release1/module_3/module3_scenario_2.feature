@@ -1,7 +1,7 @@
-@module_3
-Feature: Module 3 - Scenario 2
+@regression @module_3 @tables
+Feature: Data Tables - Sorting
 
-  Scenario: Module 3 Scenario 2
-    Given I perform a prerequisite action
-    When I perform the action for scenario 2
-    Then I should see the expected result for scenario 2
+  Scenario: User sorts the data table by last name
+    Given I open the Tables page
+    When I sort the table by last name
+    Then the last name column should be sorted ascending

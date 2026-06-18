@@ -1,7 +1,7 @@
-@module_4
-Feature: Module 4 - Scenario 1
+@regression @module_4 @upload
+Feature: File Upload
 
-  Scenario: Module 4 Scenario 1
-    Given I perform a prerequisite action
-    When I perform the action for scenario 1
-    Then I should see the expected result for scenario 1
+  Scenario: User uploads a file successfully
+    Given I open the File Upload page
+    When I upload the file from test data "uploadFileName"
+    Then the uploaded file name should match test data "uploadFileName"

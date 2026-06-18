@@ -3,7 +3,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 export const ENV = {
-  BASE_URL: process.env.BASE_URL || "https://playwright.dev/python",
+  BASE_URL: process.env.BASE_URL || "https://the-internet.herokuapp.com",
   ENV_NAME: process.env.ENV_NAME || "qa",
   BROWSER: (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium",
   HEADLESS: process.env.HEADLESS === "true",

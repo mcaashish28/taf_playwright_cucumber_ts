@@ -1,7 +1,7 @@
-@module_4
-Feature: Module 4 - Scenario 3
+@regression @module_4 @windows
+Feature: Multiple Windows
 
-  Scenario: Module 4 Scenario 3
-    Given I perform a prerequisite action
-    When I perform the action for scenario 3
-    Then I should see the expected result for scenario 3
+  Scenario: User opens a new window and reads its content
+    Given I open the Multiple Windows page
+    When I open the new window
+    Then the new window heading should match test data "windowNewWindowTextWrong"

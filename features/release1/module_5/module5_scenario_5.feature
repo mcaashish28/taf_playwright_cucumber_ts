@@ -1,7 +1,7 @@
-@module_5
-Feature: Module 5 - Scenario 5
+@regression @module_5 @infinite_scroll
+Feature: Infinite Scroll
 
-  Scenario: Module 5 Scenario 5
-    Given I perform a prerequisite action
-    When I perform the action for scenario 5
-    Then I should see the expected result for scenario 5
+  Scenario: User scrolls to load more content
+    Given I open the Infinite Scroll page
+    When I scroll down 3 times
+    Then the number of loaded paragraphs should be at least test data "infiniteScrollMinParagraphs"

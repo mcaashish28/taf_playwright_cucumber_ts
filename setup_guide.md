@@ -2,14 +2,61 @@
 
 ## Prerequisites
 
-- **Node.js** >= 18 (recommended: LTS version)
-- **npm** >= 9
-- **Git** installed
-- A code editor (VS Code recommended)
+- **Node.js** >= 18 (recommended: LTS version) — [nodejs.org](https://nodejs.org)
+- **npm** >= 9 (bundled with Node.js)
+- **Git** installed — [git-scm.com](https://git-scm.com)
+- **VS Code** or **Cursor** editor — [code.visualstudio.com](https://code.visualstudio.com) / [cursor.sh](https://cursor.sh)
+
+Works on **Windows**, **macOS**, and **Linux**.
 
 ---
 
-## 1. Clone the Repository
+## Quick Setup (One Command) — Recommended
+
+After cloning the repo, run a single command to install everything:
+
+```bash
+git clone <your-repo-url> playwright_cucumber_ts
+cd playwright_cucumber_ts
+npm run setup
+```
+
+The `npm run setup` command runs [scripts/setup.mjs](scripts/setup.mjs) and does the following in order:
+
+| Step | Action |
+|------|--------|
+| 1 | `npm install` — installs every dep from `package.json` (`@cucumber/cucumber`, `@playwright/test`, `ts-node`, `typescript`, `multiple-cucumber-html-reporter`, `dotenv`, `winston`) |
+| 2 | `npx playwright install` — downloads Chromium, Firefox, and WebKit browsers |
+| 3 | Auto-detects VS Code / Cursor and installs the required editor extensions |
+
+### Editor extensions installed automatically
+
+| Extension ID | Purpose |
+|--------------|---------|
+| `CucumberOpen.cucumber-official` | Gherkin syntax highlighting, step autocomplete, go-to-definition for `.feature` files |
+| `ms-playwright.playwright` | Playwright test runner integration |
+| `dbaeumer.vscode-eslint` | ESLint integration |
+| `esbenp.prettier-vscode` | Prettier formatter |
+
+### After setup
+
+1. **Reload your editor**: `Cmd/Ctrl + Shift + P` → **"Developer: Reload Window"**.
+2. Open a `.feature` file — keywords should be colorized and the bottom-right language indicator should show **"Cucumber"**.
+3. Run `npm test` to verify the framework works end-to-end.
+
+### Platform notes
+
+- **Windows**: The `code` CLI is on PATH by default after a standard VS Code install — extensions install automatically.
+- **macOS**: If `code` CLI isn't on PATH, the script falls back to `/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`. If you want `code` on PATH, run `Cmd+Shift+P` → **"Shell Command: Install 'code' command in PATH"** inside VS Code.
+- **Linux**: The `code` CLI is on PATH by default after `apt`/`snap` install.
+
+If no editor CLI is detected, the script prints the extension list so you can install them manually from the marketplace.
+
+---
+
+## Manual Setup (if you skipped Quick Setup)
+
+### 1. Clone the Repository
 
 ```bash
 git clone <your-repo-url> playwright_cucumber_ts
@@ -18,7 +65,7 @@ cd playwright_cucumber_ts
 
 ---
 
-## 2. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 npm install
@@ -31,10 +78,11 @@ This installs:
 - `typescript` — TypeScript compiler
 - `dotenv` — Environment configuration
 - `winston` — Logging
+- `multiple-cucumber-html-reporter` — HTML report generator
 
 ---
 
-## 3. Install Playwright Browsers
+### 3. Install Playwright Browsers
 
 ```bash
 npx playwright install
@@ -44,7 +92,22 @@ This downloads Chromium, Firefox, and WebKit browsers.
 
 ---
 
-## 4. Configure Environment
+### 4. Install VS Code / Cursor Extensions
+
+Install these from the marketplace, or via the CLI:
+
+```bash
+code --install-extension CucumberOpen.cucumber-official
+code --install-extension ms-playwright.playwright
+code --install-extension dbaeumer.vscode-eslint
+code --install-extension esbenp.prettier-vscode
+```
+
+(For Cursor, replace `code` with `cursor`.)
+
+---
+
+## 5. Configure Environment
 
 Edit the `.env` file in the project root:
 
@@ -68,7 +131,7 @@ ENV_NAME=qa
 
 ---
 
-## 5. Project Structure
+## 6. Project Structure
 
 ```
 playwright_cucumber_ts/
@@ -107,7 +170,7 @@ playwright_cucumber_ts/
 
 ---
 
-## 6. Customize for Your Project
+## 7. Customize for Your Project
 
 ### A. Add a New Module
 
@@ -161,7 +224,7 @@ npx cucumber-js --tags "@regression and @module_3"
 
 ---
 
-## 7. Running Tests
+## 8. Running Tests
 
 ```bash
 # Run all regression tests
@@ -182,7 +245,7 @@ npm run test:parallel
 
 ---
 
-## 8. Generating Reports
+## 9. Generating Reports
 
 Reports are auto-generated after test execution. You can also generate manually:
 
@@ -203,7 +266,7 @@ Example: `report_qa_29_05_2026_04_30_00_PM.html`
 
 ---
 
-## 9. Report Features
+## 10. Report Features
 
 The custom HTML report includes:
 - **Overview Tab**: Summary cards (Total, Passed, Failed, Skipped, Health %)
@@ -215,10 +278,12 @@ All elements are interactive — click any card or status to navigate to details
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
+| `npm run setup` fails on Step 3 (extensions) | Ensure VS Code or Cursor is installed. On Mac, also run `Cmd+Shift+P` → **"Shell Command: Install 'code' command in PATH"** inside VS Code, then re-run `npm run setup`. |
+| `.feature` file shows as **Plain Text** in the editor | Cucumber extension not installed or editor needs reload. Run `npm run setup` again, then `Cmd/Ctrl+Shift+P` → **"Developer: Reload Window"**. |
 | Step definitions not found | Verify glob paths in `cucumber.mjs` match your folder structure |
 | Browser not installed | Run `npx playwright install` |
 | Timeout errors | Increase timeout in `.env` or `hooks.ts` |
@@ -227,7 +292,7 @@ All elements are interactive — click any card or status to navigate to details
 
 ---
 
-## 11. CI/CD Integration
+## 12. CI/CD Integration
 
 Add to your CI pipeline:
 

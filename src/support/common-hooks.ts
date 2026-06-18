@@ -15,8 +15,8 @@ try {
 let BASE_URL = process.env.BASE_URL || "";
 let browserName = (process.env.BROWSER as "chromium" | "firefox" | "webkit") || "chromium";
 let browserOptions: LaunchOptions = {
-  headless: process.env.HEADLESS === "true",
-  slowMo: parseInt(process.env.SLOW_MO || "0"),
+  headless: process.env.HEADLESS === "false",
+  slowMo: parseInt(process.env.SLOW_MO ||"200"),
   args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--start-maximized"],
 };
 

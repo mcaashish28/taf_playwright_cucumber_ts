@@ -1,7 +1,6 @@
-@module_5
-Feature: Module 5 - Scenario 1
+@regression @module_5 @basic_auth
+Feature: Basic Authentication
 
-  Scenario: Module 5 Scenario 1
-    Given I perform a prerequisite action
-    When I perform the action for scenario 1
-    Then I should see the expected result for scenario 1
+  Scenario: User authenticates using HTTP basic auth credentials
+    Given I authenticate with basic auth using test data "basicAuthUser" and "basicAuthPassword"
+    Then the page content should contain test data "basicAuthSuccessText"

@@ -1,7 +1,7 @@
-@module_3
-Feature: Module 3 - Scenario 4
+@regression @module_3 @slider
+Feature: Horizontal Slider
 
-  Scenario: Module 3 Scenario 4
-    Given I perform a prerequisite action
-    When I perform the action for scenario 4
-    Then I should see the expected result for scenario 4
+  Scenario: User sets the horizontal slider to a target value
+    Given I open the Horizontal Slider page
+    When I set the slider to test data "sliderTargetValue"
+    Then the slider value should match test data "sliderTargetValue"
