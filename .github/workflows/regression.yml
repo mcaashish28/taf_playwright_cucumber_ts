@@ -1,0 +1,80 @@
+name: Regression Tests
+
+# ---------------------------------------------------------------------------
+# Runs the @regression Cucumber suite on the-internet.herokuapp.com,
+# generates the custom HTML report, and uploads it as a build artifact.
+# ---------------------------------------------------------------------------
+
+on:
+  # Manual trigger only for now — click "Run workflow" in the Actions tab.
+  workflow_dispatch:
+
+  # ---------------------------------------------------------------------------
+  # Auto-triggers (enable later by uncommenting):
+  #
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
+  # schedule:
+  #   - cron: "0 2 * * *"   # nightly at 02:00 UTC
+  # ---------------------------------------------------------------------------
+
+jobs:
+  regression:
+    name: Run Regression Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BASE_URL: https://the-internet.herokuapp.com
+      ENV_NAME: qa
+      BROWSER: chromium
+      HEADLESS: "true"
+      TIMEOUT: "30000"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Create reports directory
+        run: mkdir -p reports
+
+      - name: Run regression tests
+        run: npx cucumber-js --tags "@regression" --parallel 3
+
+      - name: Generate HTML report
+        if: always() # generate even when tests fail
+        run: |
+          rm -f reports/.report_lock
+          npx ts-node src/support/reporters/custom-reporter.ts
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-html-report
+          path: reports/*.html
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload failure screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
