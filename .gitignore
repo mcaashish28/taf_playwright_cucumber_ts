@@ -5,7 +5,6 @@ reports/
 screenshots/
 videos/
 traces/
-.env
 *.log
 .DS_Store
 src/support/config.ts
