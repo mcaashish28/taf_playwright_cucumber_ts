@@ -53,7 +53,9 @@ jobs:
         run: mkdir -p reports
 
       - name: Run regression tests
-        run: npx cucumber-js --tags "@regression" --parallel 3
+        # xvfb-run provides a virtual X display so the browser can launch on the
+        # headless CI runner (the framework launches a maximized/headed browser).
+        run: xvfb-run --auto-servernum -- npx cucumber-js --tags "@regression" --parallel 3
 
       - name: Generate HTML report
         if: always() # generate even when tests fail
